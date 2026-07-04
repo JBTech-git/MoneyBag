@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id             Int           @id @default(autoincrement())
+  name           String
+  accountType    String        @default("cash") @map("account_type")
+  initialBalance Decimal       @default(0) @map("initial_balance")
+  color          String        @default("")
+  isDefault      Boolean       @default(false) @map("is_default")
+  includeInTotal Boolean       @default(true) @map("include_in_total")
+  sortOrder      Int           @default(0) @map("sort_order")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  incomes        Income[]
+  expenses       Expense[]
+  transactions   Transaction[]
+
+  @@map("accounts")
+}
+
+model Income {
+  id           Int           @id @default(autoincrement())
+  sourceName   String        @map("source_name")
+  amount       Decimal
+  accountId    Int           @map("account_id")
+  periodYear   Int           @map("period_year")
+  periodMonth  Int           @map("period_month")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  account      Account       @relation(fields: [accountId], references: [id])
+  transactions Transaction[]
+
+  @@index([periodYear, periodMonth])
+  @@map("incomes")
+}
+
+model Expense {
+  id              Int           @id @default(autoincrement())
+  categoryName    String        @map("category_name")
+  budgetedAmount  Decimal       @map("budgeted_amount")
+  actualAmount    Decimal       @default(0) @map("actual_amount")
+  isPaid          Boolean       @default(false) @map("is_paid")
+  accountId       Int           @map("account_id")
+  periodYear      Int           @map("period_year")
+  periodMonth     Int           @map("period_month")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  account         Account       @relation(fields: [accountId], references: [id])
+  transactions    Transaction[]
+
+  @@index([periodYear, periodMonth])
+  @@index([isPaid])
+  @@map("expenses")
+}
+
+model Transaction {
+  id              Int      @id @default(autoincrement())
+  transactionType String   @map("transaction_type")
+  categoryName    String   @map("category_name")
+  amount          Decimal
+  memo            String   @default("")
+  accountId       Int      @map("account_id")
+  transactionDate DateTime @map("transaction_date")
+  linkedIncomeId  Int?     @map("linked_income_id")
+  linkedExpenseId Int?     @map("linked_expense_id")
+  fromBudget      Boolean  @default(false) @map("from_budget")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  account         Account  @relation(fields: [accountId], references: [id])
+  linkedIncome    Income?  @relation(fields: [linkedIncomeId], references: [id], onDelete: SetNull)
+  linkedExpense   Expense? @relation(fields: [linkedExpenseId], references: [id], onDelete: SetNull)
+
+  @@index([transactionDate])
+  @@index([transactionType])
+  @@map("transactions")
+}
+
+model AppSettings {
+  id                   Int      @id @default(1)
+  displayName          String   @default("") @map("display_name")
+  currencyCode         String   @default("INR") @map("currency_code")
+  currencySymbol       String   @default("₹") @map("currency_symbol")
+  currencyPosition     String   @default("before") @map("currency_position")
+  theme                String   @default("light")
+  appMode              String   @default("daily") @map("app_mode")
+  showZeroBalanceBadge Boolean  @default(true) @map("show_zero_balance_badge")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}

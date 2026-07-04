@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { money } from '@/lib/formatClient';
-import type { BootstrapData, LedgerEntry } from '@/lib/types';
+import type { BootstrapData, LedgerEntry, LedgerMonth } from '@/lib/types';
 import { shortDateLabel, parseIsoDate } from '@/lib/dates';
 import { CURRENCY_CHOICES } from '@/lib/currencies';
 import { ACCOUNT_TYPE_CHOICES } from '@/lib/accounts';
@@ -27,15 +27,18 @@ function shiftMonth(year: number, month: number, delta: number) {
 export default function MoneyApp() {
   const [data, setData] = useState<BootstrapData | null>(null);
   const [loading, setLoading] = useState(true);
+  const dataRef = useRef<BootstrapData | null>(null);
+  dataRef.current = data;
   const [toast, setToast] = useState<{ message: string; type: string } | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [addType, setAddType] = useState<'expense' | 'income'>('expense');
 
   const load = useCallback(async (params?: Partial<BootstrapData> | Record<string, string | number>) => {
-    setLoading(true);
+    const isFirstLoad = !dataRef.current;
+    if (isFirstLoad) setLoading(true);
     try {
       const p = new URLSearchParams();
-      const base = data;
+      const base = dataRef.current;
       const mode = String(params?.app_mode ?? (params as { mode?: string })?.mode ?? base?.app_mode ?? 'daily');
       const year = String(params?.month_year ?? (params as { year?: number })?.year ?? base?.month_year ?? new Date().getFullYear());
       const month = String(params?.month_num ?? (params as { month?: number })?.month ?? base?.month_num ?? new Date().getMonth() + 1);
@@ -75,9 +78,9 @@ export default function MoneyApp() {
         type: 'error',
       });
     } finally {
-      setLoading(false);
+      if (isFirstLoad) setLoading(false);
     }
-  }, [data]);
+  }, []);
 
   useEffect(() => {
     load({ mode: 'daily', tab: 'home' }).catch(console.error);
@@ -125,18 +128,18 @@ export default function MoneyApp() {
 
   if (!data) {
     return (
-      <div className="app-container flex flex-col items-center justify-center min-h-screen gap-3 px-4">
+      <>
         {loading ? (
-          <MoneybagLoader label="Loading Moneybag…" size="lg" />
+          <MoneybagLoader size="lg" overlay />
         ) : (
-          <>
+          <div className="app-container flex flex-col items-center justify-center min-h-screen gap-3 px-4">
             <p className="text-md-on-surface text-center">{toast?.message || 'Could not load Moneybag'}</p>
             <button type="button" className="btn-primary px-5 py-2.5 rounded-full" onClick={() => load({ mode: 'daily', tab: 'home' })}>
               Retry
             </button>
-          </>
+          </div>
         )}
-      </div>
+      </>
     );
   }
 
@@ -171,13 +174,7 @@ export default function MoneyApp() {
       </header>
 
       <main className="flex-1 overflow-y-auto pb-28 px-4 pt-2" id="main-content">
-        {loading && (
-          <div className="tab-hint tab-hint--loading">
-            <MoneybagLoader label="Updating…" size="sm" />
-          </div>
-        )}
-
-        {tab === 'home' && !loading && (
+        {tab === 'home' && (
           <div id="home-view">
             <MonthNav data={data} onChange={changeMonth} />
             {mode === 'daily' ? (
@@ -237,7 +234,7 @@ export default function MoneyApp() {
           </div>
         )}
 
-        {tab === 'ledger' && !loading && (
+        {tab === 'ledger' && (
           <div className="ledger-panel">
             <div className="ledger-top-filters">
               {mode !== 'monthly' && (
@@ -320,6 +317,12 @@ export default function MoneyApp() {
                   ))}
                 </div>
               </div>
+            ) : data.txn_view === 'monthly' && mode !== 'monthly' ? (
+              <MonthlyAccordion
+                months={data.ledger_months || []}
+                m={m}
+                onOpen={(e) => setSheet({ type: 'edit-tx', id: e.pk })}
+              />
             ) : (
               <LedgerEntriesList
                 entries={data.ledger_entries}
@@ -340,7 +343,7 @@ export default function MoneyApp() {
           </div>
         )}
 
-        {tab === 'accounts' && !loading && (
+        {tab === 'accounts' && (
           <div className="space-y-4">
             <div className="account-total-card">
               <div className="flex items-center justify-between mb-1"><span className="text-sm opacity-90">Total Assets</span><span className="material-icons-round opacity-80">account_balance</span></div>
@@ -371,7 +374,7 @@ export default function MoneyApp() {
           </div></div>
         )}
 
-        {tab === 'settings' && !loading && (
+        {tab === 'settings' && (
           <SettingsForm data={data} onSave={async (body) => { await api('/api/settings', 'PUT', body); }} />
         )}
       </main>
@@ -448,6 +451,164 @@ export default function MoneyApp() {
   );
 }
 
+function LedgerEntryRow({
+  entry,
+  m,
+  onOpen,
+  onTogglePaid,
+}: {
+  entry: LedgerEntry;
+  m: (n: number) => string;
+  onOpen: (e: LedgerEntry) => void;
+  onTogglePaid?: (id: number) => void;
+}) {
+  return (
+    <div
+      className={`mm-transaction ripple-item flex items-center gap-3 px-4 py-3 cursor-pointer ${entry.is_paid ? 'paid-item' : ''}`}
+      onClick={() => onOpen(entry)}
+    >
+      <div className="icon-circle" style={{ background: `${entry.style.color}22`, color: entry.style.color }}>
+        <span className="material-icons-round">{entry.style.icon}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium truncate">{entry.title}</p>
+        <p className="text-xs text-md-on-surface-variant">{entry.subtitle}</p>
+      </div>
+      <p className={`font-semibold ${entry.kind === 'income' ? 'amount-income' : 'amount-expense'}`}>
+        {entry.kind === 'income' ? '+' : '−'}
+        {m(entry.amount)}
+      </p>
+      {entry.source === 'budget' && entry.kind === 'expense' && onTogglePaid && (
+        <button
+          type="button"
+          className={`pay-btn ${entry.is_paid ? 'pay-btn--paid' : ''}`}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onTogglePaid(entry.pk);
+          }}
+        >
+          <span className="material-icons-round">{entry.is_paid ? 'check_circle' : 'radio_button_unchecked'}</span>
+          <span className="pay-btn__label">{entry.is_paid ? 'Paid' : 'Pay'}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function MonthlyAccordion({
+  months,
+  m,
+  onOpen,
+}: {
+  months: LedgerMonth[];
+  m: (n: number) => string;
+  onOpen: (e: LedgerEntry) => void;
+}) {
+  const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const next = new Set<string>();
+    for (const month of months) {
+      if (month.is_current) next.add(`${month.year}-${month.month}`);
+    }
+    if (next.size === 0 && months[0]) next.add(`${months[0].year}-${months[0].month}`);
+    setOpenKeys(next);
+  }, [months]);
+
+  const toggle = (key: string) => {
+    setOpenKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const visibleMonths = months.filter((month) => month.entry_count > 0);
+
+  if (!visibleMonths.length) {
+    return (
+      <div className="empty-state">
+        <span className="material-icons-round">receipt_long</span>
+        <p className="font-medium">No transactions</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="month-accordion ledger-list">
+      {visibleMonths.map((month) => {
+        const key = `${month.year}-${month.month}`;
+        const isOpen = openKeys.has(key);
+        return (
+          <div key={key} className={`month-accordion__item${isOpen ? ' month-accordion__item--open' : ''}`}>
+            <button
+              type="button"
+              className="month-accordion__header ripple-item"
+              onClick={() => toggle(key)}
+              aria-expanded={isOpen}
+            >
+              <div className="month-accordion__top">
+                <div className="month-accordion__info">
+                  <span className="month-accordion__label">{month.short_label}</span>
+                  <span className="month-accordion__count">
+                    {month.entry_count} {month.entry_count === 1 ? 'entry' : 'entries'}
+                  </span>
+                </div>
+                <span className="material-icons-round month-accordion__chevron">expand_more</span>
+              </div>
+              <div className="month-accordion__stats">
+                <div className="month-accordion__stat month-accordion__stat--income">
+                  <span className="month-accordion__stat-label">Income</span>
+                  <span className="month-accordion__stat-value amount-income">+{m(month.income)}</span>
+                </div>
+                <div className="month-accordion__stat month-accordion__stat--expense">
+                  <span className="month-accordion__stat-label">Expense</span>
+                  <span className="month-accordion__stat-value amount-expense">−{m(month.expense)}</span>
+                </div>
+                <div className="month-accordion__stat month-accordion__stat--net">
+                  <span className="month-accordion__stat-label">Net</span>
+                  <span className={`month-accordion__stat-value ${month.net >= 0 ? 'amount-income' : 'amount-expense'}`}>
+                    {m(month.net)}
+                  </span>
+                </div>
+              </div>
+            </button>
+            {isOpen && (
+              <div className="month-accordion__body px-3 pb-3">
+                {month.days.length ? (
+                  month.days.map((day) => (
+                    <div key={day.date} className="month-accordion__day">
+                      <div className="ledger-day__header">
+                        <span className="ledger-day__label">{day.label}</span>
+                        <span className={`ledger-day__net ${day.income - day.expense >= 0 ? 'amount-income' : 'amount-expense'}`}>
+                          {m(day.income - day.expense)}
+                        </span>
+                      </div>
+                      <div className="ledger-day__totals">
+                        <span className="amount-income">+{m(day.income)}</span>
+                        <span className="text-md-on-surface-variant">·</span>
+                        <span className="amount-expense">−{m(day.expense)}</span>
+                      </div>
+                      <div className="ledger-day__card account-ledger-list">
+                        {day.entries.map((entry) => (
+                          <LedgerEntryRow key={`${entry.source}-${entry.pk}`} entry={entry} m={m} onOpen={onOpen} />
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="month-accordion__empty">No transactions</p>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function LedgerEntriesList({
   entries,
   groupByDay,
@@ -471,36 +632,7 @@ function LedgerEntriesList({
   }
 
   const renderRow = (e: LedgerEntry) => (
-    <div
-      key={`${e.source}-${e.pk}`}
-      className={`mm-transaction ripple-item flex items-center gap-3 px-4 py-3 cursor-pointer ${e.is_paid ? 'paid-item' : ''}`}
-      onClick={() => onOpen(e)}
-    >
-      <div className="icon-circle" style={{ background: `${e.style.color}22`, color: e.style.color }}>
-        <span className="material-icons-round">{e.style.icon}</span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{e.title}</p>
-        <p className="text-xs text-md-on-surface-variant">{e.subtitle}</p>
-      </div>
-      <p className={`font-semibold ${e.kind === 'income' ? 'amount-income' : 'amount-expense'}`}>
-        {e.kind === 'income' ? '+' : '−'}
-        {m(e.amount)}
-      </p>
-      {e.source === 'budget' && e.kind === 'expense' && (
-        <button
-          type="button"
-          className={`pay-btn ${e.is_paid ? 'pay-btn--paid' : ''}`}
-          onClick={(ev) => {
-            ev.stopPropagation();
-            onTogglePaid(e.pk);
-          }}
-        >
-          <span className="material-icons-round">{e.is_paid ? 'check_circle' : 'radio_button_unchecked'}</span>
-          <span className="pay-btn__label">{e.is_paid ? 'Paid' : 'Pay'}</span>
-        </button>
-      )}
-    </div>
+    <LedgerEntryRow key={`${e.source}-${e.pk}`} entry={e} m={m} onOpen={onOpen} onTogglePaid={onTogglePaid} />
   );
 
   if (!groupByDay) {
@@ -878,8 +1010,8 @@ function SettingsForm({ data, onSave }: { data: BootstrapData; onSave: (b: unkno
           <label className="cursor-pointer"><input type="radio" name="app_mode" value="monthly" className="sr-only" defaultChecked={s.appMode === 'monthly'} /><span className="settings-option">Monthly</span></label>
         </div>
         <div className="settings-pill-track mt-3">
+          <label className="cursor-pointer"><input type="radio" name="theme" value="dark" className="sr-only" defaultChecked={s.theme !== 'light'} /><span className="settings-option">Dark</span></label>
           <label className="cursor-pointer"><input type="radio" name="theme" value="light" className="sr-only" defaultChecked={s.theme === 'light'} /><span className="settings-option">Light</span></label>
-          <label className="cursor-pointer"><input type="radio" name="theme" value="dark" className="sr-only" defaultChecked={s.theme === 'dark'} /><span className="settings-option">Dark</span></label>
         </div>
       </div>
       <div className="form-section form-section--soft">

@@ -5,6 +5,7 @@ import {
   endOfDay,
   endOfMonth,
   formatTxnTime,
+  iterMonthsBack,
   localDateIso,
   monthLabel,
   parseIsoDate,
@@ -13,9 +14,10 @@ import {
   startOfDay,
   startOfMonth,
 } from './dates';
+import type { LedgerDaySection, LedgerEntry, LedgerMonth } from './types';
 import { toNum } from './money';
 import { formatMoneyWith, loadSettings } from './settings';
-import { expenseReceivedTotal, incomeReceivedTotal } from './sync';
+import { batchExpenseReceivedTotals, batchIncomeReceivedTotals } from './sync';
 
 export async function ensureDefaultAccount() {
   const count = await prisma.account.count();
@@ -31,15 +33,46 @@ export async function ensureDefaultAccount() {
 }
 
 export async function computeAccountBalance(accountId: number, initialBalance: number) {
-  const income = await prisma.transaction.aggregate({
-    where: { accountId, transactionType: 'income' },
+  const map = await batchComputeAccountBalances([{ id: accountId, initialBalance }]);
+  return map.get(accountId) ?? initialBalance;
+}
+
+async function batchComputeAccountBalances(
+  accounts: Array<{ id: number; initialBalance: { toString(): string } | number }>,
+) {
+  const balances = new Map<number, number>();
+  if (!accounts.length) return balances;
+
+  const accountIds = accounts.map((a) => a.id);
+  const rows = await prisma.transaction.groupBy({
+    by: ['accountId', 'transactionType'],
+    where: { accountId: { in: accountIds } },
     _sum: { amount: true },
   });
-  const expense = await prisma.transaction.aggregate({
-    where: { accountId, transactionType: 'expense' },
-    _sum: { amount: true },
-  });
-  return initialBalance + toNum(income._sum.amount) - toNum(expense._sum.amount);
+
+  const totals = new Map<number, { income: number; expense: number }>();
+  for (const row of rows) {
+    const bucket = totals.get(row.accountId) || { income: 0, expense: 0 };
+    if (row.transactionType === 'income') bucket.income = toNum(row._sum.amount);
+    else if (row.transactionType === 'expense') bucket.expense = toNum(row._sum.amount);
+    totals.set(row.accountId, bucket);
+  }
+
+  for (const a of accounts) {
+    const t = totals.get(a.id) || { income: 0, expense: 0 };
+    balances.set(a.id, toNum(a.initialBalance) + t.income - t.expense);
+  }
+  return balances;
+}
+
+function sumAggByType(
+  rows: Array<{
+    transactionType: string;
+    _sum?: { amount?: { toString(): string } | number | null } | null;
+  }>,
+  type: string,
+) {
+  return toNum(rows.find((r) => r.transactionType === type)?._sum?.amount ?? null);
 }
 
 export type AppQuery = {
@@ -72,117 +105,167 @@ export async function getAppBootstrap(query: AppQuery = {}) {
   const dayStart = startOfDay(selectedDate);
   const dayEnd = endOfDay(selectedDate);
 
-  const [accounts, incomes, expenses, monthTxs, dayTxs, allTxAgg, recentTxs] =
-    await Promise.all([
-      prisma.account.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
-      prisma.income.findMany({
-        where: { periodYear: year, periodMonth: month },
-        include: { account: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.expense.findMany({
-        where: { periodYear: year, periodMonth: month },
-        include: { account: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.transaction.findMany({
-        where: { transactionDate: { gte: monthStart, lte: monthEnd } },
-        include: { account: true },
-        orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
-      }),
-      prisma.transaction.findMany({
-        where: { transactionDate: { gte: dayStart, lte: dayEnd } },
-        include: { account: true },
-        orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
-      }),
-      prisma.transaction.groupBy({
-        by: ['transactionType'],
-        _sum: { amount: true },
-      }),
-      prisma.transaction.findMany({
-        include: { account: true },
-        orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
-        take: 10,
-      }),
-    ]);
+  const needsLedger = tab === 'ledger';
+  const needsMonthTxs =
+    needsLedger && mode !== 'monthly' && (txnView === 'daily' || txnView === 'calendar');
+  const needsMonthlyAccordion = needsLedger && mode === 'daily' && txnView === 'monthly';
+  const needsAccountBalances = tab === 'accounts' || (needsLedger && txnView === 'daily' && filter === 'total');
+  const needsBudgetTotals = mode === 'monthly' || tab === 'ledger';
+  const needsDayMonthAggs = tab === 'home' && mode === 'daily';
 
-  const dayIncome = dayTxs
-    .filter((t) => t.transactionType === 'income')
-    .reduce((s, t) => s + toNum(t.amount), 0);
-  const dayExpense = dayTxs
-    .filter((t) => t.transactionType === 'expense')
-    .reduce((s, t) => s + toNum(t.amount), 0);
-  const dailyIncomeMonth = monthTxs
-    .filter((t) => t.transactionType === 'income')
-    .reduce((s, t) => s + toNum(t.amount), 0);
-  const dailyExpenseMonth = monthTxs
-    .filter((t) => t.transactionType === 'expense')
-    .reduce((s, t) => s + toNum(t.amount), 0);
+  const [
+    accounts,
+    incomes,
+    expenses,
+    allTxAgg,
+    recentTxs,
+    monthTxs,
+    dayAgg,
+    monthAgg,
+  ] = await Promise.all([
+    prisma.account.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    prisma.income.findMany({
+      where: { periodYear: year, periodMonth: month },
+      include: { account: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.expense.findMany({
+      where: { periodYear: year, periodMonth: month },
+      include: { account: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.transaction.groupBy({
+      by: ['transactionType'],
+      _sum: { amount: true },
+    }),
+    prisma.transaction.findMany({
+      include: { account: true },
+      orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
+      take: 10,
+    }),
+    needsMonthTxs
+      ? prisma.transaction.findMany({
+          where: { transactionDate: { gte: monthStart, lte: monthEnd } },
+          include: { account: true },
+          orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
+        })
+      : Promise.resolve([]),
+    needsDayMonthAggs
+      ? prisma.transaction.groupBy({
+          by: ['transactionType'],
+          where: { transactionDate: { gte: dayStart, lte: dayEnd } },
+          _sum: { amount: true },
+        })
+      : Promise.resolve([]),
+    needsDayMonthAggs
+      ? prisma.transaction.groupBy({
+          by: ['transactionType'],
+          where: { transactionDate: { gte: monthStart, lte: monthEnd } },
+          _sum: { amount: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  let dayIncome = 0;
+  let dayExpense = 0;
+  let dailyIncomeMonth = 0;
+  let dailyExpenseMonth = 0;
+
+  if (needsDayMonthAggs) {
+    dayIncome = sumAggByType(dayAgg, 'income');
+    dayExpense = sumAggByType(dayAgg, 'expense');
+    dailyIncomeMonth = sumAggByType(monthAgg, 'income');
+    dailyExpenseMonth = sumAggByType(monthAgg, 'expense');
+  } else if (monthTxs.length) {
+    const dayTxs = monthTxs.filter(
+      (t) => t.transactionDate >= dayStart && t.transactionDate <= dayEnd,
+    );
+    dayIncome = dayTxs
+      .filter((t) => t.transactionType === 'income')
+      .reduce((s, t) => s + toNum(t.amount), 0);
+    dayExpense = dayTxs
+      .filter((t) => t.transactionType === 'expense')
+      .reduce((s, t) => s + toNum(t.amount), 0);
+    dailyIncomeMonth = monthTxs
+      .filter((t) => t.transactionType === 'income')
+      .reduce((s, t) => s + toNum(t.amount), 0);
+    dailyExpenseMonth = monthTxs
+      .filter((t) => t.transactionType === 'expense')
+      .reduce((s, t) => s + toNum(t.amount), 0);
+  }
 
   const totalIncome = incomes.reduce((s, i) => s + toNum(i.amount), 0);
   const totalPlanned = expenses.reduce((s, e) => s + toNum(e.budgetedAmount), 0);
   const planBalance = totalIncome - totalPlanned;
 
+  const expenseIds = expenses.map((e) => e.id);
+  const incomeIds = incomes.map((i) => i.id);
+  const [expenseReceivedMap, incomeReceivedMap, balanceMap] = await Promise.all([
+    needsBudgetTotals
+      ? batchExpenseReceivedTotals(year, month, expenseIds)
+      : Promise.resolve(new Map<number, number>()),
+    needsBudgetTotals
+      ? batchIncomeReceivedTotals(year, month, incomeIds)
+      : Promise.resolve(new Map<number, number>()),
+    needsAccountBalances
+      ? batchComputeAccountBalances(accounts)
+      : Promise.resolve(new Map<number, number>()),
+  ]);
+
   let actualSpent = 0;
-  for (const e of expenses) {
-    actualSpent += await expenseReceivedTotal(e.id, e.periodYear, e.periodMonth);
+  if (needsBudgetTotals) {
+    for (const e of expenses) {
+      actualSpent += expenseReceivedMap.get(e.id) ?? 0;
+    }
   }
   const budgetRemaining = totalPlanned - actualSpent;
   const budgetSpentPct = totalPlanned
     ? Math.min(100, Math.round((actualSpent / totalPlanned) * 100))
     : 0;
 
-  const allTimeIncome = toNum(
-    allTxAgg.find((a) => a.transactionType === 'income')?._sum.amount,
-  );
-  const allTimeExpense = toNum(
-    allTxAgg.find((a) => a.transactionType === 'expense')?._sum.amount,
-  );
+  const allTimeIncome = sumAggByType(allTxAgg, 'income');
+  const allTimeExpense = sumAggByType(allTxAgg, 'expense');
 
-  const accountRows = await Promise.all(
-    accounts.map(async (a) => ({
-      account: serializeAccount(a),
-      balance: await computeAccountBalance(a.id, toNum(a.initialBalance)),
-    })),
-  );
-  const totalAssets = accountRows
-    .filter((r) => r.account.include_in_total)
-    .reduce((s, r) => s + r.balance, 0);
+  const accountRows = accounts.map((a) => ({
+    account: serializeAccount(a),
+    balance: balanceMap.get(a.id) ?? toNum(a.initialBalance),
+  }));
+  const totalAssets = needsAccountBalances
+    ? accountRows
+        .filter((r) => r.account.include_in_total)
+        .reduce((s, r) => s + r.balance, 0)
+    : 0;
 
-  const budgetExpenseRows = await Promise.all(
-    expenses.map(async (e) => {
-      const spent = await expenseReceivedTotal(e.id, e.periodYear, e.periodMonth);
-      const planned = toNum(e.budgetedAmount);
-      const pct = planned ? Math.round((spent / planned) * 100) : spent ? 100 : 0;
-      return {
-        pk: e.id,
-        title: e.categoryName,
-        planned,
-        actual: spent,
-        remaining: planned - spent,
-        progress_pct: Math.min(pct, 100),
-        is_over: spent > planned,
-        style: categoryStyle(e.categoryName),
-      };
-    }),
-  );
+  const budgetExpenseRows = expenses.map((e) => {
+    const spent = expenseReceivedMap.get(e.id) ?? 0;
+    const planned = toNum(e.budgetedAmount);
+    const pct = planned ? Math.round((spent / planned) * 100) : spent ? 100 : 0;
+    return {
+      pk: e.id,
+      title: e.categoryName,
+      planned,
+      actual: spent,
+      remaining: planned - spent,
+      progress_pct: Math.min(pct, 100),
+      is_over: spent > planned,
+      style: categoryStyle(e.categoryName),
+    };
+  });
 
-  const budgetIncomeRows = await Promise.all(
-    incomes.map(async (i) => {
-      const received = await incomeReceivedTotal(i.id, i.periodYear, i.periodMonth);
-      const planned = toNum(i.amount);
-      const pct = planned ? Math.round((received / planned) * 100) : received ? 100 : 0;
-      return {
-        pk: i.id,
-        title: i.sourceName,
-        planned,
-        actual: received,
-        remaining: planned - received,
-        progress_pct: Math.min(pct, 100),
-        is_over: received > planned,
-      };
-    }),
-  );
+  const budgetIncomeRows = incomes.map((i) => {
+    const received = incomeReceivedMap.get(i.id) ?? 0;
+    const planned = toNum(i.amount);
+    const pct = planned ? Math.round((received / planned) * 100) : received ? 100 : 0;
+    return {
+      pk: i.id,
+      title: i.sourceName,
+      planned,
+      actual: received,
+      remaining: planned - received,
+      progress_pct: Math.min(pct, 100),
+      is_over: received > planned,
+    };
+  });
 
   const recentActivity = recentTxs.map((t) => ({
     source: 'daily' as const,
@@ -199,8 +282,27 @@ export async function getAppBootstrap(query: AppQuery = {}) {
         : categoryStyle(t.categoryName),
   }));
 
-  const ledgerEntries = buildLedgerEntries(monthTxs, incomes, expenses, filter, mode);
-  const calendarDays = buildCalendarDays(year, month, monthTxs);
+  const ledgerEntries = needsLedger
+    ? buildLedgerEntries(monthTxs, incomes, expenses, filter, mode)
+    : [];
+
+  let ledgerMonths: LedgerMonth[] = [];
+  if (needsMonthlyAccordion) {
+    const monthKeys = iterMonthsBack(year, month, 12);
+    const oldest = monthKeys[monthKeys.length - 1];
+    const accordionStart = startOfMonth(oldest[0], oldest[1]);
+    const accordionTxs = await prisma.transaction.findMany({
+      where: { transactionDate: { gte: accordionStart, lte: monthEnd } },
+      include: { account: true },
+      orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
+    });
+    ledgerMonths = buildMonthlyAccordion(accordionTxs, year, month, filter);
+  }
+
+  const calendarDays =
+    needsLedger && txnView === 'calendar' && mode !== 'monthly'
+      ? buildCalendarDays(year, month, monthTxs)
+      : [];
 
   const defaultAccount = accounts.find((a) => a.isDefault) || accounts[0];
 
@@ -265,15 +367,16 @@ export async function getAppBootstrap(query: AppQuery = {}) {
     budget_expense_rows: budgetExpenseRows,
     recent_activity: recentActivity,
     ledger_entries: ledgerEntries,
+    ledger_months: ledgerMonths,
     calendar_days: calendarDays,
     expense_suggestions: Array.from(new Set(expenses.map((e) => e.categoryName))),
     income_suggestions: Array.from(new Set(incomes.map((i) => i.sourceName))),
     money,
     counts: {
       accounts: accounts.length,
-      transactions: await prisma.transaction.count(),
-      incomes: await prisma.income.count(),
-      expenses: await prisma.expense.count(),
+      transactions: 0,
+      incomes: incomes.length,
+      expenses: expenses.length,
     },
   };
 }
@@ -301,18 +404,103 @@ function serializeAccount(a: {
   };
 }
 
+function passesLedgerFilter(transactionType: string, filter: string): boolean {
+  if (filter === 'income') return transactionType === 'income';
+  if (filter === 'expense') return transactionType === 'expense';
+  if (filter === 'total') return false;
+  return true;
+}
+
+type TxRow = {
+  id: number;
+  transactionType: string;
+  categoryName: string;
+  amount: { toString(): string };
+  memo: string;
+  transactionDate: Date;
+  linkedExpenseId: number | null;
+  linkedIncomeId: number | null;
+  account: { name: string };
+};
+
+function mapTransactionToLedgerEntry(t: TxRow): LedgerEntry {
+  return {
+    kind: t.transactionType,
+    source: 'daily',
+    pk: t.id,
+    title: t.categoryName,
+    subtitle: `${t.account.name} · ${formatTxnTime(t.transactionDate)}${
+      t.linkedExpenseId ? ' · Budget' : t.linkedIncomeId ? ' · Salary' : ''
+    }${t.memo ? ` · ${t.memo}` : ''}`,
+    amount: toNum(t.amount),
+    date: localDateIso(t.transactionDate),
+    style:
+      t.transactionType === 'income'
+        ? { icon: 'arrow_downward', color: '#059669' }
+        : categoryStyle(t.categoryName),
+  };
+}
+
+function buildMonthlyAccordion(
+  txs: TxRow[],
+  endYear: number,
+  endMonth: number,
+  filter: string,
+  monthsCount = 12,
+): LedgerMonth[] {
+  const months: LedgerMonth[] = [];
+
+  for (const [y, m] of iterMonthsBack(endYear, endMonth, monthsCount)) {
+    const mStart = startOfMonth(y, m);
+    const mEnd = endOfMonth(y, m);
+    const monthTxs = txs.filter((t) => t.transactionDate >= mStart && t.transactionDate <= mEnd);
+    const filtered = monthTxs.filter((t) => passesLedgerFilter(t.transactionType, filter));
+
+    const income = filtered
+      .filter((t) => t.transactionType === 'income')
+      .reduce((s, t) => s + toNum(t.amount), 0);
+    const expense = filtered
+      .filter((t) => t.transactionType === 'expense')
+      .reduce((s, t) => s + toNum(t.amount), 0);
+
+    const entries = filtered.map(mapTransactionToLedgerEntry);
+    const dayMap = new Map<string, LedgerEntry[]>();
+    for (const e of entries) {
+      const key = e.date || 'other';
+      const list = dayMap.get(key) || [];
+      list.push(e);
+      dayMap.set(key, list);
+    }
+
+    const days: LedgerDaySection[] = Array.from(dayMap.entries())
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([date, list]) => ({
+        date,
+        label: date === 'other' ? 'Other' : shortDateLabel(parseIsoDate(date)),
+        income: list.filter((x) => x.kind === 'income').reduce((s, x) => s + x.amount, 0),
+        expense: list.filter((x) => x.kind === 'expense').reduce((s, x) => s + x.amount, 0),
+        entries: list,
+      }));
+
+    months.push({
+      year: y,
+      month: m,
+      label: monthLabel(y, m),
+      short_label: shortMonthLabel(y, m),
+      is_current: y === endYear && m === endMonth,
+      entry_count: entries.length,
+      income,
+      expense,
+      net: income - expense,
+      days,
+    });
+  }
+
+  return months;
+}
+
 function buildLedgerEntries(
-  monthTxs: Array<{
-    id: number;
-    transactionType: string;
-    categoryName: string;
-    amount: { toString(): string };
-    memo: string;
-    transactionDate: Date;
-    linkedExpenseId: number | null;
-    linkedIncomeId: number | null;
-    account: { name: string };
-  }>,
+  monthTxs: TxRow[],
   incomes: Array<{
     id: number;
     sourceName: string;
@@ -365,27 +553,8 @@ function buildLedgerEntries(
   }
 
   return monthTxs
-    .filter((t) => {
-      if (filter === 'income') return t.transactionType === 'income';
-      if (filter === 'expense') return t.transactionType === 'expense';
-      if (filter === 'total') return false;
-      return true;
-    })
-    .map((t) => ({
-      kind: t.transactionType,
-      source: 'daily',
-      pk: t.id,
-      title: t.categoryName,
-      subtitle: `${t.account.name} · ${formatTxnTime(t.transactionDate)}${
-        t.linkedExpenseId ? ' · Budget' : t.linkedIncomeId ? ' · Salary' : ''
-      }${t.memo ? ` · ${t.memo}` : ''}`,
-      amount: toNum(t.amount),
-      date: localDateIso(t.transactionDate),
-      style:
-        t.transactionType === 'income'
-          ? { icon: 'arrow_downward', color: '#059669' }
-          : categoryStyle(t.categoryName),
-    }));
+    .filter((t) => passesLedgerFilter(t.transactionType, filter))
+    .map(mapTransactionToLedgerEntry);
 }
 
 function buildCalendarDays(

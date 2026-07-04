@@ -1,6 +1,6 @@
 /* Moneybag service worker — enables install on mobile/tablet */
-const CACHE = 'moneybag-v2';
-const PRECACHE = ['/', '/icons/moneybag.png'];
+const CACHE = 'moneybag-v4';
+const PRECACHE = ['/', '/icons/app-icon.png', '/icons/app-icon-192.png', '/icons/app-icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

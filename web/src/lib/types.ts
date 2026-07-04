@@ -45,6 +45,7 @@ export type BootstrapData = {
   budget_expense_rows: BudgetRow[];
   recent_activity: ActivityRow[];
   ledger_entries: LedgerEntry[];
+  ledger_months: LedgerMonth[];
   calendar_days: CalendarDay[];
   expense_suggestions: string[];
   income_suggestions: string[];
@@ -118,6 +119,27 @@ export type LedgerEntry = {
   is_paid?: boolean;
   date?: string;
   style: { icon: string; color: string };
+};
+
+export type LedgerMonth = {
+  year: number;
+  month: number;
+  label: string;
+  short_label: string;
+  is_current: boolean;
+  entry_count: number;
+  income: number;
+  expense: number;
+  net: number;
+  days: LedgerDaySection[];
+};
+
+export type LedgerDaySection = {
+  date: string;
+  label: string;
+  income: number;
+  expense: number;
+  entries: LedgerEntry[];
 };
 
 export type CalendarDay = {

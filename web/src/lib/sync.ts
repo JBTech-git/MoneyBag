@@ -3,31 +3,69 @@ import { combineLocalDatetime } from './dates';
 import { toNum } from './money';
 
 export async function expenseReceivedTotal(expenseId: number, periodYear: number, periodMonth: number) {
+  const map = await batchExpenseReceivedTotals(periodYear, periodMonth, [expenseId]);
+  return map.get(expenseId) ?? 0;
+}
+
+export async function incomeReceivedTotal(incomeId: number, periodYear: number, periodMonth: number) {
+  const map = await batchIncomeReceivedTotals(periodYear, periodMonth, [incomeId]);
+  return map.get(incomeId) ?? 0;
+}
+
+export async function batchExpenseReceivedTotals(
+  periodYear: number,
+  periodMonth: number,
+  expenseIds: number[],
+) {
+  const totals = new Map<number, number>();
+  if (!expenseIds.length) return totals;
+
   const start = new Date(periodYear, periodMonth - 1, 1);
   const end = new Date(periodYear, periodMonth, 0, 23, 59, 59, 999);
-  const result = await prisma.transaction.aggregate({
+  const rows = await prisma.transaction.groupBy({
+    by: ['linkedExpenseId'],
     where: {
-      linkedExpenseId: expenseId,
+      linkedExpenseId: { in: expenseIds },
       transactionType: 'expense',
       transactionDate: { gte: start, lte: end },
     },
     _sum: { amount: true },
   });
-  return toNum(result._sum.amount);
+
+  for (const row of rows) {
+    if (row.linkedExpenseId != null) {
+      totals.set(row.linkedExpenseId, toNum(row._sum.amount));
+    }
+  }
+  return totals;
 }
 
-export async function incomeReceivedTotal(incomeId: number, periodYear: number, periodMonth: number) {
+export async function batchIncomeReceivedTotals(
+  periodYear: number,
+  periodMonth: number,
+  incomeIds: number[],
+) {
+  const totals = new Map<number, number>();
+  if (!incomeIds.length) return totals;
+
   const start = new Date(periodYear, periodMonth - 1, 1);
   const end = new Date(periodYear, periodMonth, 0, 23, 59, 59, 999);
-  const result = await prisma.transaction.aggregate({
+  const rows = await prisma.transaction.groupBy({
+    by: ['linkedIncomeId'],
     where: {
-      linkedIncomeId: incomeId,
+      linkedIncomeId: { in: incomeIds },
       transactionType: 'income',
       transactionDate: { gte: start, lte: end },
     },
     _sum: { amount: true },
   });
-  return toNum(result._sum.amount);
+
+  for (const row of rows) {
+    if (row.linkedIncomeId != null) {
+      totals.set(row.linkedIncomeId, toNum(row._sum.amount));
+    }
+  }
+  return totals;
 }
 
 export async function syncExpenseFromTransactions(expenseId: number) {

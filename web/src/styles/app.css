@@ -3135,6 +3135,17 @@ header.app-header {
 }
 
 /* Moneybag animated loader — coins in (top), expenses out (bottom) */
+.mb-loader-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--surface-dim) 88%, transparent);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
 .mb-loader {
     display: flex;
     flex-direction: column;

@@ -91,3 +91,18 @@ export function startOfDay(d: Date): Date {
 export function endOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 }
+
+export function iterMonthsBack(endYear: number, endMonth: number, count = 12): Array<[number, number]> {
+  const months: Array<[number, number]> = [];
+  let y = endYear;
+  let m = endMonth;
+  for (let i = 0; i < count; i++) {
+    months.push([y, m]);
+    m -= 1;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    }
+  }
+  return months;
+}

@@ -5,7 +5,7 @@ export async function loadSettings() {
   let settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
   if (!settings) {
     settings = await prisma.appSettings.create({
-      data: { id: 1, currencyCode: 'INR', currencySymbol: '₹' },
+      data: { id: 1, currencyCode: 'INR', currencySymbol: '₹', theme: 'dark' },
     });
   }
   return settings;
@@ -41,7 +41,7 @@ export async function updateSettings(data: {
       currencyCode: currencyCode ?? 'INR',
       currencySymbol: config?.symbol ?? '₹',
       currencyPosition: data.currencyPosition ?? config?.position ?? 'before',
-      theme: data.theme ?? 'light',
+      theme: data.theme ?? 'dark',
       appMode: data.appMode ?? 'daily',
       showZeroBalanceBadge: data.showZeroBalanceBadge ?? true,
     },

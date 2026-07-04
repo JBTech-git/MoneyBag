@@ -6,8 +6,8 @@ const CATEGORY_ICONS = [
 ];
 
 const CATEGORY_COLORS = [
-  '#F97316', '#16A34A', '#E11D48', '#0EA5E9', '#8B5CF6',
-  '#F59E0B', '#EC4899', '#78716C', '#14B8A6', '#EA580C',
+  '#1E3A8A', '#059669', '#DC2626', '#FBBF24', '#8B5CF6',
+  '#2563EB', '#EC4899', '#6B7280', '#0D9488', '#172554',
 ];
 
 function hashName(name: string): number {

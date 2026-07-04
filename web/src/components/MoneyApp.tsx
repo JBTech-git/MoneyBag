@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { money } from '@/lib/formatClient';
-import type { BootstrapData } from '@/lib/types';
+import type { BootstrapData, LedgerEntry } from '@/lib/types';
+import { shortDateLabel, parseIsoDate } from '@/lib/dates';
 import { CURRENCY_CHOICES } from '@/lib/currencies';
 import { ACCOUNT_TYPE_CHOICES } from '@/lib/accounts';
 import { toDatetimeLocalValue } from '@/lib/dates';
@@ -241,49 +242,101 @@ export default function MoneyApp() {
             <div className="ledger-top-filters">
               {mode !== 'monthly' && (
                 <div className="ledger-toolbar">
-                  <span className="ledger-top-filters__label">View</span>
                   <div className="txn-view-switcher txn-view-switcher--compact">
-                    {(['daily', 'monthly', 'calendar'] as const).map((v) => (
-                      <button key={v} type="button" className={`txn-view-switcher__btn ${data.txn_view === v ? 'txn-view-switcher__btn--active' : ''}`} onClick={() => load({ txn_view: v })}>
-                        <span className="material-icons-round">{v === 'daily' ? 'today' : v === 'monthly' ? 'view_list' : 'calendar_month'}</span>
-                        <span className="txn-view-switcher__label">{v[0].toUpperCase() + v.slice(1)}</span>
+                    {([
+                      { key: 'daily', icon: 'today', label: 'Daily' },
+                      { key: 'monthly', icon: 'view_list', label: 'Monthly' },
+                      { key: 'calendar', icon: 'calendar_month', label: 'Calendar' },
+                    ] as const).map((v) => (
+                      <button
+                        key={v.key}
+                        type="button"
+                        className={`txn-view-switcher__btn ${data.txn_view === v.key ? 'txn-view-switcher__btn--active' : ''}`}
+                        onClick={() => load({ txn_view: v.key })}
+                      >
+                        <span className="material-icons-round">{v.icon}</span>
+                        <span className="txn-view-switcher__label">{v.label}</span>
                       </button>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="filter-bar ledger-filter filter-bar--values">
-                {[
-                  { key: 'all', icon: 'apps', label: 'All', value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' },
-                  { key: 'income', icon: 'south_west', label: 'Income', value: data.all_time_income, cls: 'amount-income', chip: 'filter-chip--income' },
-                  { key: 'expense', icon: 'north_east', label: 'Expense', value: data.all_time_expense, cls: 'amount-expense', chip: 'filter-chip--expense' },
-                  ...(mode !== 'monthly' ? [{ key: 'total', icon: 'account_balance', label: 'Total', value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' }] : []),
-                ].map((f) => (
-                  <button key={f.key} type="button" className={`filter-chip ${f.chip || ''} ${data.ledger_filter === f.key ? 'filter-chip--active' : ''}`} onClick={() => load({ ledger_filter: f.key })}>
-                    <span className="material-icons-round">{f.icon}</span>
-                    <span className="filter-chip__label">{f.label}</span>
-                    <span className={`filter-chip__value ${f.cls}`}>{m(f.value)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-2">
-              {data.ledger_entries.length === 0 ? (
-                <div className="empty-state"><span className="material-icons-round">receipt_long</span><p className="font-medium">No items</p></div>
-              ) : data.ledger_entries.map((e) => (
-                <div key={`${e.source}-${e.pk}`} className={`mm-transaction ripple-item flex items-center gap-3 px-4 py-3 cursor-pointer ${e.is_paid ? 'paid-item' : ''}`} onClick={() => setSheet(e.source === 'budget' ? (e.kind === 'income' ? { type: 'edit-income', id: e.pk } : { type: 'edit-expense', id: e.pk }) : { type: 'edit-tx', id: e.pk })}>
-                  <div className="icon-circle" style={{ background: `${e.style.color}22`, color: e.style.color }}><span className="material-icons-round">{e.style.icon}</span></div>
-                  <div className="flex-1 min-w-0"><p className="font-medium truncate">{e.title}</p><p className="text-xs text-md-on-surface-variant">{e.subtitle}</p></div>
-                  <p className={`font-semibold ${e.kind === 'income' ? 'amount-income' : 'amount-expense'}`}>{e.kind === 'income' ? '+' : '−'}{m(e.amount)}</p>
-                  {e.source === 'budget' && e.kind === 'expense' && (
-                    <button type="button" className={`pay-btn ${e.is_paid ? 'pay-btn--paid' : ''}`} onClick={(ev) => { ev.stopPropagation(); api(`/api/expenses/${e.pk}/toggle-paid`, 'POST'); }}>
-                      <span className="material-icons-round">{e.is_paid ? 'check_circle' : 'radio_button_unchecked'}</span>
-                      <span className="pay-btn__label">{e.is_paid ? 'Paid' : 'Pay'}</span>
+              {data.txn_view !== 'calendar' && (
+                <div className="filter-bar ledger-filter filter-bar--values">
+                  {[
+                    { key: 'all', icon: 'apps', label: 'All', value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' },
+                    { key: 'income', icon: 'south_west', label: 'Income', value: data.all_time_income, cls: 'amount-income', chip: 'filter-chip--income' },
+                    { key: 'expense', icon: 'north_east', label: 'Expense', value: data.all_time_expense, cls: 'amount-expense', chip: 'filter-chip--expense' },
+                    ...(mode !== 'monthly' ? [{ key: 'total', icon: 'account_balance', label: 'Total', value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' }] : []),
+                  ].map((f) => (
+                    <button key={f.key} type="button" className={`filter-chip ${f.chip || ''} ${data.ledger_filter === f.key ? 'filter-chip--active' : ''}`} onClick={() => load({ ledger_filter: f.key })}>
+                      <span className="material-icons-round">{f.icon}</span>
+                      <span className="filter-chip__label">{f.label}</span>
+                      <span className={`filter-chip__value ${f.cls}`}>{m(f.value)}</span>
                     </button>
-                  )}
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
+
+            {data.txn_view === 'calendar' && mode !== 'monthly' ? (
+              <ActivityCalendar
+                days={data.calendar_days || []}
+                selected={data.selected_date_iso}
+                onSelect={(iso) => load({ selected_date_iso: iso, txn_view: 'daily' })}
+              />
+            ) : data.ledger_filter === 'total' && mode !== 'monthly' ? (
+              <div className="ledger-total-summary">
+                <div className="ledger-total-summary__meta">
+                  <span>All time</span>
+                  <span className="ledger-total-summary__hint">All transactions</span>
+                </div>
+                <div className="month-accordion__stats ledger-total-summary__stats">
+                  <div className="month-accordion__stat month-accordion__stat--income">
+                    <span className="month-accordion__stat-label">Income</span>
+                    <span className="month-accordion__stat-value amount-income">+{m(data.all_time_income)}</span>
+                  </div>
+                  <div className="month-accordion__stat month-accordion__stat--expense">
+                    <span className="month-accordion__stat-label">Expense</span>
+                    <span className="month-accordion__stat-value amount-expense">−{m(data.all_time_expense)}</span>
+                  </div>
+                  <div className="month-accordion__stat month-accordion__stat--net">
+                    <span className="month-accordion__stat-label">Net</span>
+                    <span className={`month-accordion__stat-value ${data.all_time_net >= 0 ? 'amount-income' : 'amount-expense'}`}>{m(data.all_time_net)}</span>
+                  </div>
+                </div>
+                <div className="space-y-2 mt-3">
+                  {data.account_rows.map((row) => (
+                    <div key={row.account.id} className="account-card">
+                      <div className="icon-circle" style={{ background: `${row.account.color}22`, color: row.account.color }}>
+                        <span className="material-icons-round">{row.account.icon}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{row.account.name}</p>
+                        <p className="text-xs text-md-on-surface-variant">{row.account.type_label}</p>
+                      </div>
+                      <p className={`font-semibold ${row.balance < 0 ? 'amount-expense' : ''}`}>{m(row.balance)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <LedgerEntriesList
+                entries={data.ledger_entries}
+                groupByDay={data.txn_view === 'daily' && mode !== 'monthly'}
+                m={m}
+                onOpen={(e) =>
+                  setSheet(
+                    e.source === 'budget'
+                      ? e.kind === 'income'
+                        ? { type: 'edit-income', id: e.pk }
+                        : { type: 'edit-expense', id: e.pk }
+                      : { type: 'edit-tx', id: e.pk },
+                  )
+                }
+                onTogglePaid={(id) => api(`/api/expenses/${id}/toggle-paid`, 'POST')}
+              />
+            )}
           </div>
         )}
 
@@ -390,6 +443,149 @@ export default function MoneyApp() {
             <span>{toast.message}</span>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function LedgerEntriesList({
+  entries,
+  groupByDay,
+  m,
+  onOpen,
+  onTogglePaid,
+}: {
+  entries: LedgerEntry[];
+  groupByDay: boolean;
+  m: (n: number) => string;
+  onOpen: (e: LedgerEntry) => void;
+  onTogglePaid: (id: number) => void;
+}) {
+  if (!entries.length) {
+    return (
+      <div className="empty-state">
+        <span className="material-icons-round">receipt_long</span>
+        <p className="font-medium">No items</p>
+      </div>
+    );
+  }
+
+  const renderRow = (e: LedgerEntry) => (
+    <div
+      key={`${e.source}-${e.pk}`}
+      className={`mm-transaction ripple-item flex items-center gap-3 px-4 py-3 cursor-pointer ${e.is_paid ? 'paid-item' : ''}`}
+      onClick={() => onOpen(e)}
+    >
+      <div className="icon-circle" style={{ background: `${e.style.color}22`, color: e.style.color }}>
+        <span className="material-icons-round">{e.style.icon}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium truncate">{e.title}</p>
+        <p className="text-xs text-md-on-surface-variant">{e.subtitle}</p>
+      </div>
+      <p className={`font-semibold ${e.kind === 'income' ? 'amount-income' : 'amount-expense'}`}>
+        {e.kind === 'income' ? '+' : '−'}
+        {m(e.amount)}
+      </p>
+      {e.source === 'budget' && e.kind === 'expense' && (
+        <button
+          type="button"
+          className={`pay-btn ${e.is_paid ? 'pay-btn--paid' : ''}`}
+          onClick={(ev) => {
+            ev.stopPropagation();
+            onTogglePaid(e.pk);
+          }}
+        >
+          <span className="material-icons-round">{e.is_paid ? 'check_circle' : 'radio_button_unchecked'}</span>
+          <span className="pay-btn__label">{e.is_paid ? 'Paid' : 'Pay'}</span>
+        </button>
+      )}
+    </div>
+  );
+
+  if (!groupByDay) {
+    return <div className="space-y-2">{entries.map(renderRow)}</div>;
+  }
+
+  const groups = new Map<string, LedgerEntry[]>();
+  for (const e of entries) {
+    const key = e.date || 'other';
+    const list = groups.get(key) || [];
+    list.push(e);
+    groups.set(key, list);
+  }
+
+  return (
+    <div>
+      {Array.from(groups.entries()).map(([date, list]) => {
+        const income = list.filter((x) => x.kind === 'income').reduce((s, x) => s + x.amount, 0);
+        const expense = list.filter((x) => x.kind === 'expense').reduce((s, x) => s + x.amount, 0);
+        const label = date === 'other' ? 'Other' : shortDateLabel(parseIsoDate(date));
+        return (
+          <div key={date} className="ledger-day-group">
+            <div className="ledger-day-group__head">
+              <span>{label}</span>
+              <span className="ledger-day-group__meta">
+                <span className="amount-income">+{m(income)}</span>
+                {' · '}
+                <span className="amount-expense">−{m(expense)}</span>
+              </span>
+            </div>
+            <div className="space-y-2">{list.map(renderRow)}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ActivityCalendar({
+  days,
+  selected,
+  onSelect,
+}: {
+  days: BootstrapData['calendar_days'];
+  selected: string;
+  onSelect: (iso: string) => void;
+}) {
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  if (!days?.length) {
+    return (
+      <div className="empty-state">
+        <span className="material-icons-round">calendar_month</span>
+        <p className="font-medium">No calendar data</p>
+      </div>
+    );
+  }
+  return (
+    <div className="mm-calendar">
+      <div className="mm-calendar__weekdays">
+        {weekdays.map((d) => (
+          <span key={d}>{d}</span>
+        ))}
+      </div>
+      <div className="mm-calendar__grid">
+        {days.map((cell) => (
+          <button
+            key={cell.iso}
+            type="button"
+            className={[
+              'mm-calendar__cell',
+              !cell.in_month ? 'mm-calendar__cell--muted' : '',
+              cell.is_today ? 'mm-calendar__cell--today' : '',
+              cell.iso === selected ? 'mm-calendar__cell--active' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            onClick={() => cell.in_month && onSelect(cell.iso)}
+          >
+            <span className="mm-calendar__day">{cell.day}</span>
+            <span className="mm-calendar__dots">
+              {cell.income > 0 && <span className="mm-calendar__dot mm-calendar__dot--income" />}
+              {cell.expense > 0 && <span className="mm-calendar__dot mm-calendar__dot--expense" />}
+            </span>
+          </button>
+        ))}
       </div>
     </div>
   );

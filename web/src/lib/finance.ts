@@ -21,7 +21,7 @@ export async function ensureDefaultAccount() {
   const count = await prisma.account.count();
   if (count === 0) {
     return prisma.account.create({
-      data: { name: 'Cash', accountType: 'cash', isDefault: true, color: '#F97316' },
+      data: { name: 'Cash', accountType: 'cash', isDefault: true, color: '#1E3A8A' },
     });
   }
   const def = await prisma.account.findFirst({ where: { isDefault: true } });
@@ -195,11 +195,12 @@ export async function getAppBootstrap(query: AppQuery = {}) {
     amount: toNum(t.amount),
     style:
       t.transactionType === 'income'
-        ? { icon: 'arrow_downward', color: '#16A34A' }
+        ? { icon: 'arrow_downward', color: '#059669' }
         : categoryStyle(t.categoryName),
   }));
 
   const ledgerEntries = buildLedgerEntries(monthTxs, incomes, expenses, filter, mode);
+  const calendarDays = buildCalendarDays(year, month, monthTxs);
 
   const defaultAccount = accounts.find((a) => a.isDefault) || accounts[0];
 
@@ -264,6 +265,7 @@ export async function getAppBootstrap(query: AppQuery = {}) {
     budget_expense_rows: budgetExpenseRows,
     recent_activity: recentActivity,
     ledger_entries: ledgerEntries,
+    calendar_days: calendarDays,
     expense_suggestions: Array.from(new Set(expenses.map((e) => e.categoryName))),
     income_suggestions: Array.from(new Set(incomes.map((i) => i.sourceName))),
     money,
@@ -340,7 +342,7 @@ function buildLedgerEntries(
           subtitle: i.account.name,
           amount: toNum(i.amount),
           actual: 0,
-          style: { icon: 'payments', color: '#16A34A' },
+          style: { icon: 'payments', color: '#059669' },
         });
       }
     }
@@ -378,9 +380,80 @@ function buildLedgerEntries(
         t.linkedExpenseId ? ' · Budget' : t.linkedIncomeId ? ' · Salary' : ''
       }${t.memo ? ` · ${t.memo}` : ''}`,
       amount: toNum(t.amount),
+      date: localDateIso(t.transactionDate),
       style:
         t.transactionType === 'income'
-          ? { icon: 'arrow_downward', color: '#16A34A' }
+          ? { icon: 'arrow_downward', color: '#059669' }
           : categoryStyle(t.categoryName),
     }));
+}
+
+function buildCalendarDays(
+  year: number,
+  month: number,
+  monthTxs: Array<{ transactionType: string; amount: { toString(): string }; transactionDate: Date }>,
+) {
+  const todayIso = localDateIso(new Date());
+  const totals = new Map<string, { income: number; expense: number }>();
+  for (const t of monthTxs) {
+    const iso = localDateIso(t.transactionDate);
+    const bucket = totals.get(iso) || { income: 0, expense: 0 };
+    if (t.transactionType === 'income') bucket.income += toNum(t.amount);
+    else bucket.expense += toNum(t.amount);
+    totals.set(iso, bucket);
+  }
+
+  const first = new Date(year, month - 1, 1);
+  const startPad = first.getDay(); // 0 Sun
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const cells: Array<{
+    iso: string;
+    day: number;
+    in_month: boolean;
+    is_today: boolean;
+    income: number;
+    expense: number;
+    has_activity: boolean;
+  }> = [];
+
+  for (let i = 0; i < startPad; i++) {
+    const d = new Date(year, month - 1, -startPad + i + 1);
+    cells.push({
+      iso: localDateIso(d),
+      day: d.getDate(),
+      in_month: false,
+      is_today: false,
+      income: 0,
+      expense: 0,
+      has_activity: false,
+    });
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const t = totals.get(iso) || { income: 0, expense: 0 };
+    cells.push({
+      iso,
+      day,
+      in_month: true,
+      is_today: iso === todayIso,
+      income: t.income,
+      expense: t.expense,
+      has_activity: t.income > 0 || t.expense > 0,
+    });
+  }
+  while (cells.length % 7 !== 0) {
+    const last = cells[cells.length - 1];
+    const d = parseIsoDate(last.iso);
+    d.setDate(d.getDate() + 1);
+    cells.push({
+      iso: localDateIso(d),
+      day: d.getDate(),
+      in_month: false,
+      is_today: false,
+      income: 0,
+      expense: 0,
+      has_activity: false,
+    });
+  }
+  return cells;
 }

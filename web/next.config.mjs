@@ -1,7 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Do not use "standalone" on Vercel — it can break API routes (405).
-  // Use standalone only for Docker / VPS deploys.
+  async rewrites() {
+    return [
+      {
+        source: '/favicon.ico',
+        destination: '/icons/moneybag.png',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

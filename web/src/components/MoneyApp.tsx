@@ -6,6 +6,8 @@ import type { BootstrapData } from '@/lib/types';
 import { CURRENCY_CHOICES } from '@/lib/currencies';
 import { ACCOUNT_TYPE_CHOICES } from '@/lib/accounts';
 import { toDatetimeLocalValue } from '@/lib/dates';
+import PwaRegister from '@/components/PwaRegister';
+import MoneybagLoader from '@/components/MoneybagLoader';
 
 type Sheet =
   | null
@@ -124,7 +126,7 @@ export default function MoneyApp() {
     return (
       <div className="app-container flex flex-col items-center justify-center min-h-screen gap-3 px-4">
         {loading ? (
-          <span className="material-icons-round animate-spin text-md-primary text-3xl">sync</span>
+          <MoneybagLoader label="Loading Moneybag…" size="lg" />
         ) : (
           <>
             <p className="text-md-on-surface text-center">{toast?.message || 'Could not load Moneybag'}</p>
@@ -149,6 +151,7 @@ export default function MoneyApp() {
 
   return (
     <div className="app-container bg-md-surface relative shadow-md-3">
+      <PwaRegister />
       <header className="app-header sticky top-0 z-30">
         <div className="app-header__bar">
           <div className="mode-switcher mode-switcher--compact app-header__mode">
@@ -168,7 +171,9 @@ export default function MoneyApp() {
 
       <main className="flex-1 overflow-y-auto pb-28 px-4 pt-2" id="main-content">
         {loading && (
-          <div className="tab-hint tab-hint--loading"><span className="material-icons-round animate-spin text-md-primary">sync</span></div>
+          <div className="tab-hint tab-hint--loading">
+            <MoneybagLoader label="Updating…" size="sm" />
+          </div>
         )}
 
         {tab === 'home' && !loading && (
@@ -325,7 +330,8 @@ export default function MoneyApp() {
       <nav className="app-nav" aria-label="Main">
         <div className="app-nav__inner">
           <div className="app-nav__brand" aria-hidden="true">
-            <span className="app-nav__brand-icon material-icons-round">account_balance_wallet</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icons/moneybag.png" alt="" className="app-nav__brand-icon-img" width={40} height={40} />
             <div className="app-nav__brand-text"><span className="app-nav__brand-title">Moneybag</span><span className="app-nav__brand-sub">Personal finance</span></div>
           </div>
           <p className="app-nav__section">Menu</p>

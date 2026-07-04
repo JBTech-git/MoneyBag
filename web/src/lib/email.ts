@@ -6,12 +6,12 @@ export function verificationExpiresAt() {
   return expires;
 }
 
-export function useDevVerificationCode() {
+export function devVerificationEnabled() {
   return process.env.NODE_ENV === 'development' || process.env.SHOW_DEV_CODE === 'true';
 }
 
 export async function sendVerificationEmail(email: string, code: string) {
-  if (useDevVerificationCode()) {
+  if (devVerificationEnabled()) {
     console.log(`[Moneybag] Verification code for ${email}: ${code}`);
     return { sent: false as const, devCode: code };
   }

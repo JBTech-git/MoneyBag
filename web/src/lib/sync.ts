@@ -93,6 +93,7 @@ export async function autoLinkTransaction(transactionId: number) {
   if (tx.transactionType === 'expense') {
     const expenses = await prisma.expense.findMany({
       where: {
+        userId: tx.userId,
         periodYear: year,
         periodMonth: month,
         categoryName: { equals: name },
@@ -114,7 +115,7 @@ export async function autoLinkTransaction(transactionId: number) {
     }
   } else {
     const incomes = await prisma.income.findMany({
-      where: { periodYear: year, periodMonth: month },
+      where: { userId: tx.userId, periodYear: year, periodMonth: month },
     });
     const matches = incomes.filter(
       (i) => i.sourceName.toLowerCase() === name.toLowerCase(),
@@ -166,6 +167,7 @@ export async function createBudgetPaymentTransaction(
   }
   const tx = await prisma.transaction.create({
     data: {
+      userId: expense.userId,
       transactionType: 'expense',
       categoryName: expense.categoryName,
       amount: remaining,
@@ -219,6 +221,7 @@ export async function createIncomeReceiptTransaction(
 
   return prisma.transaction.create({
     data: {
+      userId: income.userId,
       transactionType: 'income',
       categoryName: income.sourceName,
       amount: payAmount,

@@ -9,6 +9,11 @@ import { ACCOUNT_TYPE_CHOICES } from '@/lib/accounts';
 import { toDatetimeLocalValue } from '@/lib/dates';
 import PwaRegister from '@/components/PwaRegister';
 import MoneybagLoader from '@/components/MoneybagLoader';
+import AuthScreen from '@/components/AuthScreen';
+import PaywallScreen from '@/components/PaywallScreen';
+import type { AccessState } from '@/lib/subscription';
+
+type SessionUser = { id: string; email: string; name: string };
 
 type Sheet =
   | null
@@ -25,6 +30,10 @@ function shiftMonth(year: number, month: number, delta: number) {
 }
 
 export default function MoneyApp() {
+  const [authPhase, setAuthPhase] = useState<'checking' | 'guest' | 'paywall' | 'ready'>('checking');
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [access, setAccess] = useState<AccessState | null>(null);
+  const [trialDays, setTrialDays] = useState(2);
   const [data, setData] = useState<BootstrapData | null>(null);
   const [loading, setLoading] = useState(true);
   const dataRef = useRef<BootstrapData | null>(null);
@@ -64,6 +73,16 @@ export default function MoneyApp() {
           : `Invalid server response (${res.status})`);
       }
       if (!res.ok) {
+        if (res.status === 402) {
+          setAuthPhase('paywall');
+          throw new Error(json.error || 'Trial expired');
+        }
+        if (res.status === 401) {
+          setAuthPhase('guest');
+          setUser(null);
+          setAccess(null);
+          throw new Error(json.error || 'Sign in required');
+        }
         throw new Error(json.error || `Failed to load (${res.status})`);
       }
       if (!json.settings) {
@@ -82,10 +101,52 @@ export default function MoneyApp() {
     }
   }, []);
 
+  const beginSession = useCallback(
+    (payload: { user: SessionUser; access: AccessState }) => {
+      setUser(payload.user);
+      setAccess(payload.access);
+      if (!payload.access.hasAccess) {
+        setAuthPhase('paywall');
+        setLoading(false);
+        return;
+      }
+      setAuthPhase('ready');
+      load({ mode: 'daily', tab: 'home' }).catch(console.error);
+    },
+    [load],
+  );
+
   useEffect(() => {
-    load({ mode: 'daily', tab: 'home' }).catch(console.error);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then(async (res) => {
+        if (res.status === 401) {
+          setAuthPhase('guest');
+          setLoading(false);
+          return;
+        }
+        if (!res.ok) {
+          setAuthPhase('guest');
+          setLoading(false);
+          return;
+        }
+        const json = await res.json();
+        setTrialDays(json.trial_days ?? 2);
+        beginSession({ user: json.user, access: json.access });
+      })
+      .catch(() => {
+        setAuthPhase('guest');
+        setLoading(false);
+      });
+  }, [beginSession]);
+
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setData(null);
+    setUser(null);
+    setAccess(null);
+    setAuthPhase('guest');
+    setLoading(false);
+  };
 
   const showToast = (message: string, type = 'success') => {
     setToast({ message, type });
@@ -114,6 +175,9 @@ export default function MoneyApp() {
         return null;
       }
       if (!res.ok) {
+        if (res.status === 402) {
+          setAuthPhase('paywall');
+        }
         showToast(json.error || 'Something went wrong', 'error');
         return null;
       }
@@ -125,6 +189,37 @@ export default function MoneyApp() {
       return null;
     }
   };
+
+  if (authPhase === 'checking') {
+    return <MoneybagLoader size="lg" overlay />;
+  }
+
+  if (authPhase === 'guest') {
+    return (
+      <AuthScreen
+        trialDays={trialDays}
+        onSuccess={(payload) => {
+          setTrialDays(trialDays);
+          beginSession(payload);
+        }}
+      />
+    );
+  }
+
+  if (authPhase === 'paywall' && user && access) {
+    return (
+      <PaywallScreen
+        user={user}
+        access={access}
+        onActivated={(nextAccess) => {
+          setAccess(nextAccess);
+          setAuthPhase('ready');
+          load({ mode: 'daily', tab: 'home' }).catch(console.error);
+        }}
+        onLogout={logout}
+      />
+    );
+  }
 
   if (!data) {
     return (
@@ -156,6 +251,14 @@ export default function MoneyApp() {
   return (
     <div className="app-container bg-md-surface relative shadow-md-3">
       <PwaRegister />
+      {access?.status === 'trial' && (
+        <div className="trial-banner">
+          <span className="material-icons-round">schedule</span>
+          <span>
+            Free trial — {access.daysLeft} day{access.daysLeft === 1 ? '' : 's'} left
+          </span>
+        </div>
+      )}
       <header className="app-header sticky top-0 z-30">
         <div className="app-header__bar">
           <div className="mode-switcher mode-switcher--compact app-header__mode">
@@ -375,7 +478,21 @@ export default function MoneyApp() {
         )}
 
         {tab === 'settings' && (
-          <SettingsForm data={data} onSave={async (body) => { await api('/api/settings', 'PUT', body); }} />
+          <div className="space-y-4">
+            {user && (
+              <div className="settings-account-card">
+                <p className="text-sm text-md-on-surface-variant">Signed in as</p>
+                <p className="font-medium">{user.email}</p>
+                {access?.status === 'active' && (
+                  <p className="text-xs text-md-on-surface-variant mt-1">Subscription active</p>
+                )}
+              </div>
+            )}
+            <SettingsForm data={data} onSave={async (body) => { await api('/api/settings', 'PUT', body); }} />
+            <button type="button" className="w-full py-3 rounded-full border border-md-outline text-md-on-surface font-medium text-sm" onClick={logout}>
+              Sign out
+            </button>
+          </div>
         )}
       </main>
 

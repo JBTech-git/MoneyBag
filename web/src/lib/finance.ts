@@ -19,16 +19,19 @@ import { toNum } from './money';
 import { formatMoneyWith, loadSettings } from './settings';
 import { batchExpenseReceivedTotals, batchIncomeReceivedTotals } from './sync';
 
-export async function ensureDefaultAccount() {
-  const count = await prisma.account.count();
+export async function ensureDefaultAccount(userId: string) {
+  const count = await prisma.account.count({ where: { userId } });
   if (count === 0) {
     return prisma.account.create({
-      data: { name: 'Cash', accountType: 'cash', isDefault: true, color: '#1E3A8A' },
+      data: { userId, name: 'Cash', accountType: 'cash', isDefault: true, color: '#1E3A8A' },
     });
   }
-  const def = await prisma.account.findFirst({ where: { isDefault: true } });
+  const def = await prisma.account.findFirst({ where: { userId, isDefault: true } });
   if (def) return def;
-  const first = await prisma.account.findFirst({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+  const first = await prisma.account.findFirst({
+    where: { userId },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+  });
   return first!;
 }
 
@@ -85,9 +88,9 @@ export type AppQuery = {
   tab?: string;
 };
 
-export async function getAppBootstrap(query: AppQuery = {}) {
-  const settings = await loadSettings();
-  await ensureDefaultAccount();
+export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
+  const settings = await loadSettings(userId);
+  await ensureDefaultAccount(userId);
 
   const mode = query.mode || settings.appMode || 'daily';
   const today = new Date();
@@ -123,29 +126,34 @@ export async function getAppBootstrap(query: AppQuery = {}) {
     dayAgg,
     monthAgg,
   ] = await Promise.all([
-    prisma.account.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    prisma.account.findMany({
+      where: { userId },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    }),
     prisma.income.findMany({
-      where: { periodYear: year, periodMonth: month },
+      where: { userId, periodYear: year, periodMonth: month },
       include: { account: true },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.expense.findMany({
-      where: { periodYear: year, periodMonth: month },
+      where: { userId, periodYear: year, periodMonth: month },
       include: { account: true },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.transaction.groupBy({
       by: ['transactionType'],
+      where: { userId },
       _sum: { amount: true },
     }),
     prisma.transaction.findMany({
+      where: { userId },
       include: { account: true },
       orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
       take: 10,
     }),
     needsMonthTxs
       ? prisma.transaction.findMany({
-          where: { transactionDate: { gte: monthStart, lte: monthEnd } },
+          where: { userId, transactionDate: { gte: monthStart, lte: monthEnd } },
           include: { account: true },
           orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
         })
@@ -153,14 +161,14 @@ export async function getAppBootstrap(query: AppQuery = {}) {
     needsDayMonthAggs
       ? prisma.transaction.groupBy({
           by: ['transactionType'],
-          where: { transactionDate: { gte: dayStart, lte: dayEnd } },
+          where: { userId, transactionDate: { gte: dayStart, lte: dayEnd } },
           _sum: { amount: true },
         })
       : Promise.resolve([]),
     needsDayMonthAggs
       ? prisma.transaction.groupBy({
           by: ['transactionType'],
-          where: { transactionDate: { gte: monthStart, lte: monthEnd } },
+          where: { userId, transactionDate: { gte: monthStart, lte: monthEnd } },
           _sum: { amount: true },
         })
       : Promise.resolve([]),
@@ -292,7 +300,7 @@ export async function getAppBootstrap(query: AppQuery = {}) {
     const oldest = monthKeys[monthKeys.length - 1];
     const accordionStart = startOfMonth(oldest[0], oldest[1]);
     const accordionTxs = await prisma.transaction.findMany({
-      where: { transactionDate: { gte: accordionStart, lte: monthEnd } },
+      where: { userId, transactionDate: { gte: accordionStart, lte: monthEnd } },
       include: { account: true },
       orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
     });

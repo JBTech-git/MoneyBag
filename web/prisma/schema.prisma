@@ -7,8 +7,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  passwordHash       String?   @map("password_hash")
+  name               String    @default("")
+  trialStartedAt     DateTime  @default(now()) @map("trial_started_at")
+  trialEndsAt        DateTime  @map("trial_ends_at")
+  subscriptionStatus String    @default("trial") @map("subscription_status")
+  subscriptionEndsAt DateTime? @map("subscription_ends_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  settings     AppSettings?
+  accounts     Account[]
+  incomes      Income[]
+  expenses     Expense[]
+  transactions Transaction[]
+
+  @@map("users")
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  email     String
+  codeHash  String   @map("code_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@map("email_verifications")
+}
+
 model Account {
   id             Int           @id @default(autoincrement())
+  userId         String        @map("user_id")
   name           String
   accountType    String        @default("cash") @map("account_type")
   initialBalance Decimal       @default(0) @map("initial_balance")
@@ -18,15 +51,18 @@ model Account {
   sortOrder      Int           @default(0) @map("sort_order")
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   incomes        Income[]
   expenses       Expense[]
   transactions   Transaction[]
 
+  @@index([userId])
   @@map("accounts")
 }
 
 model Income {
   id           Int           @id @default(autoincrement())
+  userId       String        @map("user_id")
   sourceName   String        @map("source_name")
   amount       Decimal
   accountId    Int           @map("account_id")
@@ -34,15 +70,18 @@ model Income {
   periodMonth  Int           @map("period_month")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   account      Account       @relation(fields: [accountId], references: [id])
   transactions Transaction[]
 
+  @@index([userId])
   @@index([periodYear, periodMonth])
   @@map("incomes")
 }
 
 model Expense {
   id              Int           @id @default(autoincrement())
+  userId          String        @map("user_id")
   categoryName    String        @map("category_name")
   budgetedAmount  Decimal       @map("budgeted_amount")
   actualAmount    Decimal       @default(0) @map("actual_amount")
@@ -52,9 +91,11 @@ model Expense {
   periodMonth     Int           @map("period_month")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   account         Account       @relation(fields: [accountId], references: [id])
   transactions    Transaction[]
 
+  @@index([userId])
   @@index([periodYear, periodMonth])
   @@index([isPaid])
   @@map("expenses")
@@ -62,6 +103,7 @@ model Expense {
 
 model Transaction {
   id              Int      @id @default(autoincrement())
+  userId          String   @map("user_id")
   transactionType String   @map("transaction_type")
   categoryName    String   @map("category_name")
   amount          Decimal
@@ -73,17 +115,20 @@ model Transaction {
   fromBudget      Boolean  @default(false) @map("from_budget")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   account         Account  @relation(fields: [accountId], references: [id])
   linkedIncome    Income?  @relation(fields: [linkedIncomeId], references: [id], onDelete: SetNull)
   linkedExpense   Expense? @relation(fields: [linkedExpenseId], references: [id], onDelete: SetNull)
 
+  @@index([userId])
   @@index([transactionDate])
   @@index([transactionType])
   @@map("transactions")
 }
 
 model AppSettings {
-  id                   Int      @id @default(1)
+  id                   Int      @id @default(autoincrement())
+  userId               String   @unique @map("user_id")
   displayName          String   @default("") @map("display_name")
   currencyCode         String   @default("INR") @map("currency_code")
   currencySymbol       String   @default("₹") @map("currency_symbol")
@@ -92,6 +137,7 @@ model AppSettings {
   appMode              String   @default("daily") @map("app_mode")
   showZeroBalanceBadge Boolean  @default(true) @map("show_zero_balance_badge")
   updatedAt            DateTime @updatedAt @map("updated_at")
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("app_settings")
 }

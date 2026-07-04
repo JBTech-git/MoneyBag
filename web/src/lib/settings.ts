@@ -1,18 +1,23 @@
 import { prisma } from './db';
 import { formatAmount, getCurrency } from './currencies';
 
-export async function loadSettings() {
-  let settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+export async function loadSettings(userId: string) {
+  let settings = await prisma.appSettings.findUnique({ where: { userId } });
   if (!settings) {
     settings = await prisma.appSettings.create({
-      data: { id: 1, currencyCode: 'INR', currencySymbol: '₹', theme: 'dark' },
+      data: {
+        userId,
+        currencyCode: 'INR',
+        currencySymbol: '₹',
+        theme: 'dark',
+      },
     });
   }
   return settings;
 }
 
-export async function formatMoney(amount: number | string) {
-  const settings = await loadSettings();
+export async function formatMoney(amount: number | string, userId: string) {
+  const settings = await loadSettings(userId);
   return formatAmount(amount, settings.currencyCode, settings.currencyPosition);
 }
 
@@ -23,20 +28,23 @@ export function formatMoneyWith(
   return formatAmount(amount, settings.currencyCode, settings.currencyPosition);
 }
 
-export async function updateSettings(data: {
-  displayName?: string;
-  currencyCode?: string;
-  currencyPosition?: string;
-  theme?: string;
-  appMode?: string;
-  showZeroBalanceBadge?: boolean;
-}) {
+export async function updateSettings(
+  userId: string,
+  data: {
+    displayName?: string;
+    currencyCode?: string;
+    currencyPosition?: string;
+    theme?: string;
+    appMode?: string;
+    showZeroBalanceBadge?: boolean;
+  },
+) {
   const currencyCode = data.currencyCode;
   const config = currencyCode ? getCurrency(currencyCode) : null;
   return prisma.appSettings.upsert({
-    where: { id: 1 },
+    where: { userId },
     create: {
-      id: 1,
+      userId,
       displayName: data.displayName ?? '',
       currencyCode: currencyCode ?? 'INR',
       currencySymbol: config?.symbol ?? '₹',

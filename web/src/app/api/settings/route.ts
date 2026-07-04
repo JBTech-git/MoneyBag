@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CURRENCY_CHOICES } from '@/lib/currencies';
+import { authErrorResponse, requireManageAccess, requireUser } from '@/lib/auth';
 import { loadSettings, updateSettings } from '@/lib/settings';
 import { prisma } from '@/lib/db';
 
@@ -7,23 +8,30 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const settings = await loadSettings();
-  const [accounts, transactions, incomes, expenses] = await Promise.all([
-    prisma.account.count(),
-    prisma.transaction.count(),
-    prisma.income.count(),
-    prisma.expense.count(),
-  ]);
-  return NextResponse.json({
-    settings,
-    currency_choices: CURRENCY_CHOICES,
-    counts: { accounts, transactions, incomes, expenses },
-  });
+  try {
+    const user = await requireUser();
+    const settings = await loadSettings(user.id);
+    const [accounts, transactions, incomes, expenses] = await Promise.all([
+      prisma.account.count({ where: { userId: user.id } }),
+      prisma.transaction.count({ where: { userId: user.id } }),
+      prisma.income.count({ where: { userId: user.id } }),
+      prisma.expense.count({ where: { userId: user.id } }),
+    ]);
+    return NextResponse.json({
+      settings,
+      currency_choices: CURRENCY_CHOICES,
+      counts: { accounts, transactions, incomes, expenses },
+    });
+  } catch (err) {
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
+    return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 });
+  }
 }
 
-async function saveSettings(req: NextRequest) {
+async function saveSettings(req: NextRequest, userId: string) {
   const body = await req.json();
-  const settings = await updateSettings({
+  const settings = await updateSettings(userId, {
     displayName: body.display_name ?? body.displayName,
     currencyCode: body.currency_code ?? body.currencyCode,
     currencyPosition: body.currency_position ?? body.currencyPosition,
@@ -40,9 +48,16 @@ async function saveSettings(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  return saveSettings(req);
+  try {
+    const user = await requireManageAccess();
+    return saveSettings(req, user.id);
+  } catch (err) {
+    const authRes = authErrorResponse(err);
+    if (authRes) return authRes;
+    return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
-  return saveSettings(req);
+  return PUT(req);
 }

@@ -15,20 +15,26 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ['finance', 'productivity'],
     icons: [
       {
+        src: '/icons/app-icon.png',
+        sizes: '84x77',
+        type: 'image/png',
+        purpose: 'any',
+      },
+      {
         src: '/icons/app-icon-192.png',
-        sizes: '192x192',
+        sizes: '84x77',
         type: 'image/png',
         purpose: 'any',
       },
       {
         src: '/icons/app-icon-512.png',
-        sizes: '512x512',
+        sizes: '84x77',
         type: 'image/png',
         purpose: 'any',
       },
       {
         src: '/icons/app-icon-512.png',
-        sizes: '512x512',
+        sizes: '84x77',
         type: 'image/png',
         purpose: 'maskable',
       },

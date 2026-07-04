@@ -30,27 +30,50 @@ export default function MoneyApp() {
 
   const load = useCallback(async (params?: Partial<BootstrapData> | Record<string, string | number>) => {
     setLoading(true);
-    const p = new URLSearchParams();
-    const base = data;
-    const mode = String(params?.app_mode ?? (params as { mode?: string })?.mode ?? base?.app_mode ?? 'daily');
-    const year = String(params?.month_year ?? (params as { year?: number })?.year ?? base?.month_year ?? new Date().getFullYear());
-    const month = String(params?.month_num ?? (params as { month?: number })?.month ?? base?.month_num ?? new Date().getMonth() + 1);
-    const date = String(params?.selected_date_iso ?? (params as { date?: string })?.date ?? base?.selected_date_iso ?? '');
-    const txn_view = String(params?.txn_view ?? base?.txn_view ?? 'daily');
-    const filter = String(params?.ledger_filter ?? (params as { filter?: string })?.filter ?? base?.ledger_filter ?? 'all');
-    const tab = String(params?.tab ?? base?.tab ?? 'home');
-    p.set('mode', mode);
-    p.set('year', year);
-    p.set('month', month);
-    if (date) p.set('date', date);
-    p.set('txn_view', txn_view);
-    p.set('filter', filter);
-    p.set('tab', tab);
-    const res = await fetch(`/api/bootstrap?${p.toString()}`);
-    const json = await res.json();
-    setData(json);
-    setLoading(false);
-    document.documentElement.dataset.theme = json.settings.theme;
+    try {
+      const p = new URLSearchParams();
+      const base = data;
+      const mode = String(params?.app_mode ?? (params as { mode?: string })?.mode ?? base?.app_mode ?? 'daily');
+      const year = String(params?.month_year ?? (params as { year?: number })?.year ?? base?.month_year ?? new Date().getFullYear());
+      const month = String(params?.month_num ?? (params as { month?: number })?.month ?? base?.month_num ?? new Date().getMonth() + 1);
+      const date = String(params?.selected_date_iso ?? (params as { date?: string })?.date ?? base?.selected_date_iso ?? '');
+      const txn_view = String(params?.txn_view ?? base?.txn_view ?? 'daily');
+      const filter = String(params?.ledger_filter ?? (params as { filter?: string })?.filter ?? base?.ledger_filter ?? 'all');
+      const tab = String(params?.tab ?? base?.tab ?? 'home');
+      p.set('mode', mode);
+      p.set('year', year);
+      p.set('month', month);
+      if (date) p.set('date', date);
+      p.set('txn_view', txn_view);
+      p.set('filter', filter);
+      p.set('tab', tab);
+      const res = await fetch(`/api/bootstrap?${p.toString()}`, { method: 'GET', cache: 'no-store' });
+      const text = await res.text();
+      let json: BootstrapData & { error?: string };
+      try {
+        json = text ? JSON.parse(text) : { error: 'Empty response' };
+      } catch {
+        throw new Error(res.status === 405
+          ? 'API route not available (405). Redeploy the app on Vercel.'
+          : `Invalid server response (${res.status})`);
+      }
+      if (!res.ok) {
+        throw new Error(json.error || `Failed to load (${res.status})`);
+      }
+      if (!json.settings) {
+        throw new Error('Invalid app data from server');
+      }
+      setData(json);
+      document.documentElement.dataset.theme = json.settings.theme;
+    } catch (err) {
+      console.error(err);
+      setToast({
+        message: err instanceof Error ? err.message : 'Failed to load app',
+        type: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
   }, [data]);
 
   useEffect(() => {
@@ -69,25 +92,47 @@ export default function MoneyApp() {
   };
 
   const api = async (url: string, method: string, body?: unknown) => {
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      showToast(json.error || 'Something went wrong', 'error');
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+        cache: 'no-store',
+      });
+      const text = await res.text();
+      let json: { error?: string; message?: string } = {};
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        showToast(`Request failed (${res.status})`, 'error');
+        return null;
+      }
+      if (!res.ok) {
+        showToast(json.error || 'Something went wrong', 'error');
+        return null;
+      }
+      setSheet(null);
+      await refresh(json.message);
+      return json;
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Network error', 'error');
       return null;
     }
-    setSheet(null);
-    await refresh(json.message);
-    return json;
   };
 
   if (!data) {
     return (
-      <div className="app-container flex items-center justify-center min-h-screen">
-        <span className="material-icons-round animate-spin text-md-primary text-3xl">sync</span>
+      <div className="app-container flex flex-col items-center justify-center min-h-screen gap-3 px-4">
+        {loading ? (
+          <span className="material-icons-round animate-spin text-md-primary text-3xl">sync</span>
+        ) : (
+          <>
+            <p className="text-md-on-surface text-center">{toast?.message || 'Could not load Moneybag'}</p>
+            <button type="button" className="btn-primary px-5 py-2.5 rounded-full" onClick={() => load({ mode: 'daily', tab: 'home' })}>
+              Retry
+            </button>
+          </>
+        )}
       </div>
     );
   }

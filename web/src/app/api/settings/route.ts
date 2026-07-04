@@ -3,6 +3,9 @@ import { CURRENCY_CHOICES } from '@/lib/currencies';
 import { loadSettings, updateSettings } from '@/lib/settings';
 import { prisma } from '@/lib/db';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const settings = await loadSettings();
   const [accounts, transactions, incomes, expenses] = await Promise.all([
@@ -18,7 +21,7 @@ export async function GET() {
   });
 }
 
-export async function PUT(req: NextRequest) {
+async function saveSettings(req: NextRequest) {
   const body = await req.json();
   const settings = await updateSettings({
     displayName: body.display_name ?? body.displayName,
@@ -34,4 +37,12 @@ export async function PUT(req: NextRequest) {
           : undefined,
   });
   return NextResponse.json({ ok: true, message: 'Updated', settings });
+}
+
+export async function PUT(req: NextRequest) {
+  return saveSettings(req);
+}
+
+export async function POST(req: NextRequest) {
+  return saveSettings(req);
 }

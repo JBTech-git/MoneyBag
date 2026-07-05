@@ -84,7 +84,9 @@ export default function AuthScreen({ trialDays, onSuccess }: Props) {
           <p className="auth-screen__subtitle">
             {step === 'email'
               ? `Enter your email. We'll send a code — ${trialDays}-day free trial for new users.`
-              : `Enter the 6-digit code sent to ${email}`}
+              : codeHint === 'email'
+                ? `Enter the 6-digit code sent to ${email}`
+                : `Sign in to ${email} with the code below`}
           </p>
         </div>
 

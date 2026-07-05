@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       email: result.email,
       message: result.message,
-      dev_code: result.devCode,
+      dev_code: 'devCode' in result ? result.devCode : undefined,
       email_fallback: 'emailFallback' in result ? result.emailFallback : false,
       sent: result.sent,
     });

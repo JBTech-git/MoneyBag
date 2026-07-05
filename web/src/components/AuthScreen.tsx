@@ -18,7 +18,7 @@ export default function AuthScreen({ trialDays, onSuccess }: Props) {
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [codeHint, setCodeHint] = useState<'dev' | 'email' | null>(null);
+  const [codeHint, setCodeHint] = useState<'dev' | 'email' | 'fallback' | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const codeRef = useRef<HTMLInputElement>(null);
@@ -42,7 +42,7 @@ export default function AuthScreen({ trialDays, onSuccess }: Props) {
       if (!res.ok) throw new Error(json.error || 'Could not send code');
       if (json.dev_code) {
         setCode(json.dev_code);
-        setCodeHint('dev');
+        setCodeHint(json.email_fallback ? 'fallback' : 'dev');
       } else {
         setCodeHint('email');
       }
@@ -109,13 +109,17 @@ export default function AuthScreen({ trialDays, onSuccess }: Props) {
           </form>
         ) : (
           <form className="auth-screen__form" onSubmit={verifyCode}>
-            {codeHint === 'dev' && (
+            {(codeHint === 'dev' || codeHint === 'fallback') && (
               <div className="auth-screen__code-banner auth-screen__code-banner--dev">
                 <span className="material-icons-round">pin</span>
                 <div>
                   <p className="auth-screen__code-banner-title">Your sign-in code</p>
                   <p className="auth-screen__code-banner-value">{code}</p>
-                  <p className="auth-screen__code-banner-note">Local testing — code shown here instead of email.</p>
+                  <p className="auth-screen__code-banner-note">
+                    {codeHint === 'dev'
+                      ? 'Local testing — code shown here instead of email.'
+                      : 'Email could not be sent. Use this code to sign in.'}
+                  </p>
                 </div>
               </div>
             )}

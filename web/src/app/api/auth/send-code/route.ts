@@ -12,8 +12,9 @@ export async function POST(req: NextRequest) {
       ok: true,
       email: result.email,
       message: result.message,
-      sent: result.sent,
       dev_code: result.devCode,
+      email_fallback: 'emailFallback' in result ? result.emailFallback : false,
+      sent: result.sent,
     });
   } catch (err) {
     const authRes = authErrorResponse(err);

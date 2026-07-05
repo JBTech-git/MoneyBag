@@ -52,21 +52,18 @@ function resolveFromAddress() {
 
 function fallbackDelivery(email: string, code: string, reason: string) {
   console.warn(`[Moneybag] Email fallback for ${email}: ${reason}`);
-  return { sent: false as const, devCode: code };
+  return { sent: false as const, devCode: code, emailFallback: true as const };
 }
 
 export async function sendVerificationEmail(email: string, code: string) {
   if (devVerificationEnabled()) {
     console.log(`[Moneybag] Verification code for ${email}: ${code}`);
-    return { sent: false as const, devCode: code };
+    return { sent: false as const, devCode: code, emailFallback: false as const };
   }
 
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    if (emailCodeFallbackEnabled()) {
-      return fallbackDelivery(email, code, 'RESEND_API_KEY is not set');
-    }
-    throw new Error('Email is not configured. Set RESEND_API_KEY on Vercel.');
+    return fallbackDelivery(email, code, 'RESEND_API_KEY is not set');
   }
 
   const from = resolveFromAddress();
@@ -97,14 +94,8 @@ export async function sendVerificationEmail(email: string, code: string) {
   if (!res.ok) {
     const err = await res.text();
     console.error('[Moneybag] Resend error:', err);
-
-    if (emailCodeFallbackEnabled() || devVerificationEnabled()) {
-      return fallbackDelivery(email, code, err);
-    }
-
-    throw new Error(
-      `Could not send email. Use EMAIL_FROM="Moneybag <onboarding@resend.dev>" on Vercel (not Gmail). Support: ${replyTo}`,
-    );
+    // Allow sign-in when email fails (domain not verified, sandbox limits, etc.)
+    return fallbackDelivery(email, code, err);
   }
 
   return { sent: true as const };

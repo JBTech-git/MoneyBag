@@ -7,14 +7,13 @@ import type { AccessState } from '@/lib/subscription';
 type Step = 'email' | 'code';
 
 type Props = {
-  trialDays: number;
   onSuccess: (payload: {
     user: { id: string; email: string; name: string };
     access: AccessState;
   }) => void;
 };
 
-export default function AuthScreen({ trialDays, onSuccess }: Props) {
+export default function AuthScreen({ onSuccess }: Props) {
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -83,7 +82,7 @@ export default function AuthScreen({ trialDays, onSuccess }: Props) {
           <h1 className="auth-screen__title">Moneybag</h1>
           <p className="auth-screen__subtitle">
             {step === 'email'
-              ? `Enter your email. We'll send a code — ${trialDays}-day free trial for new users.`
+              ? "Enter your email. We'll send a code."
               : codeHint === 'email'
                 ? `Enter the 6-digit code sent to ${email}`
                 : `Sign in to ${email} with the code below`}

@@ -32,7 +32,6 @@ export default function MoneyApp() {
   const [authPhase, setAuthPhase] = useState<'checking' | 'guest' | 'paywall' | 'ready'>('checking');
   const [user, setUser] = useState<SessionUser | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
-  const [trialDays, setTrialDays] = useState(2);
   const [data, setData] = useState<BootstrapData | null>(null);
   const [loading, setLoading] = useState(true);
   const dataRef = useRef<BootstrapData | null>(null);
@@ -129,7 +128,6 @@ export default function MoneyApp() {
           return;
         }
         const json = await res.json();
-        setTrialDays(json.trial_days ?? 2);
         beginSession({ user: json.user, access: json.access });
       })
       .catch(() => {
@@ -196,9 +194,7 @@ export default function MoneyApp() {
   if (authPhase === 'guest') {
     return (
       <AuthScreen
-        trialDays={trialDays}
         onSuccess={(payload) => {
-          setTrialDays(trialDays);
           beginSession(payload);
         }}
       />

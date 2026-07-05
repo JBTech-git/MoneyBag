@@ -29,7 +29,7 @@ function shiftMonth(year: number, month: number, delta: number) {
 }
 
 export default function MoneyApp() {
-  const [authPhase, setAuthPhase] = useState<'checking' | 'guest' | 'paywall' | 'ready'>('checking');
+  const [authPhase, setAuthPhase] = useState<'checking' | 'guest' | 'paywall' | 'readonly' | 'ready'>('checking');
   const [user, setUser] = useState<SessionUser | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
   const [data, setData] = useState<BootstrapData | null>(null);
@@ -62,7 +62,7 @@ export default function MoneyApp() {
       p.set('tab', tab);
       const res = await fetch(`/api/bootstrap?${p.toString()}`, { method: 'GET', cache: 'no-store' });
       const text = await res.text();
-      let json: BootstrapData & { error?: string };
+      let json: BootstrapData & { error?: string; read_only?: boolean; access?: AccessState };
       try {
         json = text ? JSON.parse(text) : { error: 'Empty response' };
       } catch {
@@ -88,6 +88,12 @@ export default function MoneyApp() {
       }
       setData(json);
       document.documentElement.dataset.theme = json.settings.theme;
+      if (json.read_only) {
+        setAuthPhase('readonly');
+        if (json.access) setAccess(json.access);
+      } else {
+        setAuthPhase('ready');
+      }
     } catch (err) {
       console.error(err);
       setToast({
@@ -211,9 +217,19 @@ export default function MoneyApp() {
           setAuthPhase('ready');
           load({ mode: 'daily', tab: 'home' }).catch(console.error);
         }}
+        onViewData={() => {
+          setAuthPhase('readonly');
+          load({ mode: 'daily', tab: 'home' }).catch(console.error);
+        }}
         onLogout={logout}
       />
     );
+  }
+
+  const readOnly = authPhase === 'readonly';
+
+  if ((authPhase === 'ready' || authPhase === 'readonly') && !data && loading) {
+    return <MoneybagLoader size="lg" overlay />;
   }
 
   if (!data) {
@@ -243,14 +259,25 @@ export default function MoneyApp() {
     load({ month_year: next.year, month_num: next.month, selected_date_iso: date });
   };
 
+  const openPaywall = () => setAuthPhase('paywall');
+
+  const guardEdit = (action: () => void) => {
+    if (readOnly) {
+      showToast('Subscribe to edit your finances', 'error');
+      return;
+    }
+    action();
+  };
+
   return (
     <div className="app-container bg-md-surface relative shadow-md-3">
-      {access?.status === 'trial' && (
-        <div className="trial-banner">
-          <span className="material-icons-round">schedule</span>
-          <span>
-            Free trial — {access.daysLeft} day{access.daysLeft === 1 ? '' : 's'} left
-          </span>
+      {readOnly && (
+        <div className="readonly-banner">
+          <span className="material-icons-round">lock</span>
+          <span>Read-only — subscribe to add or edit</span>
+          <button type="button" className="readonly-banner__cta" onClick={openPaywall}>
+            Subscribe
+          </button>
         </div>
       )}
       <header className="app-header sticky top-0 z-30">
@@ -263,7 +290,7 @@ export default function MoneyApp() {
               <span className="material-icons-round">calendar_month</span><span>Budget</span>
             </button>
           </div>
-          <button type="button" id="header-add-btn" className="app-header__add" onClick={() => { setAddType(mode === 'daily' ? 'expense' : 'income'); setSheet({ type: 'add' }); }} style={{ display: tab === 'settings' ? 'none' : undefined }}>
+          <button type="button" id="header-add-btn" className="app-header__add" onClick={() => guardEdit(() => { setAddType(mode === 'daily' ? 'expense' : 'income'); setSheet({ type: 'add' }); })} style={{ display: tab === 'settings' || readOnly ? 'none' : undefined }}>
             <span className="material-icons-round">add</span>
             <span className="app-header__add-label">Add</span>
           </button>
@@ -295,14 +322,14 @@ export default function MoneyApp() {
                   </div>
                 </div>
                 <div className="quick-actions quick-actions--two">
-                  <button type="button" className="quick-action quick-action--expense" onClick={() => { setAddType('expense'); setSheet({ type: 'add' }); }}><span className="quick-action__icon"><span className="material-icons-round">north_east</span></span>Expense</button>
-                  <button type="button" className="quick-action quick-action--income" onClick={() => { setAddType('income'); setSheet({ type: 'add' }); }}><span className="quick-action__icon"><span className="material-icons-round">south_west</span></span>Income</button>
+                  <button type="button" className="quick-action quick-action--expense" onClick={() => guardEdit(() => { setAddType('expense'); setSheet({ type: 'add' }); })}><span className="quick-action__icon"><span className="material-icons-round">north_east</span></span>Expense</button>
+                  <button type="button" className="quick-action quick-action--income" onClick={() => guardEdit(() => { setAddType('income'); setSheet({ type: 'add' }); })}><span className="quick-action__icon"><span className="material-icons-round">south_west</span></span>Income</button>
                 </div>
                 <div className="section-head">
                   <h2 className="section-head__title">Recent</h2>
                   <button type="button" className="section-icon-btn" onClick={() => load({ tab: 'ledger' })}><span className="material-icons-round">arrow_forward</span></button>
                 </div>
-                <ActivityList items={data.recent_activity} m={m} onOpen={(id) => setSheet({ type: 'edit-tx', id })} />
+                <ActivityList items={data.recent_activity} m={m} onOpen={(id) => guardEdit(() => setSheet({ type: 'edit-tx', id }))} />
               </>
             ) : (
               <>
@@ -325,7 +352,7 @@ export default function MoneyApp() {
                   <h2 className="section-head__title">Categories</h2>
                   <button type="button" className="section-icon-btn" onClick={() => load({ tab: 'ledger' })}><span className="material-icons-round">edit</span></button>
                 </div>
-                <BudgetList expenses={data.budget_expense_rows} incomes={data.budget_income_rows} m={m} onExpense={(id) => setSheet({ type: 'edit-expense', id })} onIncome={(id) => setSheet({ type: 'edit-income', id })} />
+                <BudgetList expenses={data.budget_expense_rows} incomes={data.budget_income_rows} m={m} onExpense={(id) => guardEdit(() => setSheet({ type: 'edit-expense', id }))} onIncome={(id) => guardEdit(() => setSheet({ type: 'edit-income', id }))} />
               </>
             )}
           </div>
@@ -418,7 +445,7 @@ export default function MoneyApp() {
               <MonthlyAccordion
                 months={data.ledger_months || []}
                 m={m}
-                onOpen={(e) => setSheet({ type: 'edit-tx', id: e.pk })}
+                onOpen={(e) => guardEdit(() => setSheet({ type: 'edit-tx', id: e.pk }))}
               />
             ) : (
               <LedgerEntriesList
@@ -426,15 +453,17 @@ export default function MoneyApp() {
                 groupByDay={data.txn_view === 'daily' && mode !== 'monthly'}
                 m={m}
                 onOpen={(e) =>
-                  setSheet(
-                    e.source === 'budget'
-                      ? e.kind === 'income'
-                        ? { type: 'edit-income', id: e.pk }
-                        : { type: 'edit-expense', id: e.pk }
-                      : { type: 'edit-tx', id: e.pk },
+                  guardEdit(() =>
+                    setSheet(
+                      e.source === 'budget'
+                        ? e.kind === 'income'
+                          ? { type: 'edit-income', id: e.pk }
+                          : { type: 'edit-expense', id: e.pk }
+                        : { type: 'edit-tx', id: e.pk },
+                    ),
                   )
                 }
-                onTogglePaid={(id) => api(`/api/expenses/${id}/toggle-paid`, 'POST')}
+                onTogglePaid={(id) => guardEdit(() => { api(`/api/expenses/${id}/toggle-paid`, 'POST'); })}
               />
             )}
           </div>
@@ -448,14 +477,14 @@ export default function MoneyApp() {
             </div>
             <div className="space-y-2">
               {data.account_rows.map((row) => (
-                <div key={row.account.id} className="account-card ripple-item" onClick={() => setSheet({ type: 'edit-account', id: row.account.id })}>
+                <div key={row.account.id} className="account-card ripple-item" onClick={() => guardEdit(() => setSheet({ type: 'edit-account', id: row.account.id }))}>
                   <div className="icon-circle" style={{ background: `${row.account.color}22`, color: row.account.color }}><span className="material-icons-round">{row.account.icon}</span></div>
                   <div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className="font-medium truncate">{row.account.name}</p>{row.account.is_default && <span className="account-badge">Default</span>}</div><p className="text-xs text-md-on-surface-variant">{row.account.type_label}</p></div>
                   <div className="text-right flex-shrink-0"><p className={`font-semibold ${row.balance < 0 ? 'amount-expense' : ''}`}>{m(row.balance)}</p><span className="material-icons-round text-md-on-surface-variant text-lg">chevron_right</span></div>
                 </div>
               ))}
             </div>
-            <button type="button" className="w-full py-3 rounded-full border border-md-outline text-md-primary font-medium text-sm flex items-center justify-center gap-1" onClick={() => setSheet({ type: 'create-account' })}>
+            <button type="button" className="w-full py-3 rounded-full border border-md-outline text-md-primary font-medium text-sm flex items-center justify-center gap-1" onClick={() => guardEdit(() => setSheet({ type: 'create-account' }))}>
               <span className="material-icons-round text-lg">add</span> Add account
             </button>
           </div>
@@ -482,7 +511,13 @@ export default function MoneyApp() {
                 )}
               </div>
             )}
-            <SettingsForm data={data} onSave={async (body) => { await api('/api/settings', 'PUT', body); }} />
+            <SettingsForm data={data} onSave={async (body) => {
+              if (readOnly) {
+                showToast('Subscribe to edit your finances', 'error');
+                return;
+              }
+              await api('/api/settings', 'PUT', body);
+            }} />
             <button type="button" className="w-full py-3 rounded-full border border-md-outline text-md-on-surface font-medium text-sm" onClick={logout}>
               Sign out
             </button>
@@ -490,7 +525,7 @@ export default function MoneyApp() {
         )}
       </main>
 
-      <button id="fab" className="fab-btn fixed z-40 flex items-center justify-center" onClick={() => { setAddType(mode === 'daily' ? 'expense' : 'income'); setSheet({ type: 'add' }); }} style={{ display: tab === 'settings' ? 'none' : undefined }} aria-label="Add">
+      <button id="fab" className="fab-btn fixed z-40 flex items-center justify-center" onClick={() => guardEdit(() => { setAddType(mode === 'daily' ? 'expense' : 'income'); setSheet({ type: 'add' }); })} style={{ display: tab === 'settings' || readOnly ? 'none' : undefined }} aria-label="Add">
         <span className="material-icons-round text-3xl">add</span>
       </button>
 

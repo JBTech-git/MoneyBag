@@ -2,6 +2,21 @@ import type { User } from '@prisma/client';
 
 export const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 2);
 export const SUBSCRIPTION_DAYS = Number(process.env.SUBSCRIPTION_DAYS || 30);
+export const SUBSCRIPTION_PRICE_LABEL =
+  process.env.SUBSCRIPTION_PRICE_LABEL?.trim() || '₹99/month';
+
+export function getSubscriptionConfig() {
+  return {
+    trialDays: TRIAL_DAYS,
+    subscriptionDays: SUBSCRIPTION_DAYS,
+    priceLabel: SUBSCRIPTION_PRICE_LABEL,
+    demoAllowed: process.env.ALLOW_DEMO_SUBSCRIPTION === 'true',
+    supportEmail:
+      process.env.SUPPORT_EMAIL?.trim() ||
+      process.env.EMAIL_REPLY_TO?.trim() ||
+      'info.mnybag@gmail.com',
+  };
+}
 
 export type AccessState = {
   hasAccess: boolean;

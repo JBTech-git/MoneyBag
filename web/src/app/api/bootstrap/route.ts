@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authErrorResponse, requireManageAccess } from '@/lib/auth';
+import { authErrorResponse, requireUser } from '@/lib/auth';
 import { getAppBootstrap } from '@/lib/finance';
+import { getAccessState } from '@/lib/subscription';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireManageAccess();
+    const user = await requireUser();
+    const access = getAccessState(user);
     const sp = req.nextUrl.searchParams;
     const data = await getAppBootstrap(user.id, {
       mode: sp.get('mode') || undefined,
@@ -21,7 +23,11 @@ export async function GET(req: NextRequest) {
     // money function can't be serialized
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { money, ...payload } = data;
-    return NextResponse.json(payload);
+    return NextResponse.json({
+      ...payload,
+      access,
+      read_only: !access.hasAccess,
+    });
   } catch (err) {
     const authRes = authErrorResponse(err);
     if (authRes) return authRes;

@@ -3825,6 +3825,92 @@ header.app-header {
     font-size: 0.875rem;
 }
 
+.paywall-screen__price {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    margin: 1rem 0 0.25rem;
+    padding: 0.875rem 1rem;
+    border-radius: 12px;
+    background: rgba(37, 99, 235, 0.08);
+    border: 1px solid rgba(37, 99, 235, 0.15);
+}
+
+.paywall-screen__price-label {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--on-surface);
+}
+
+.paywall-screen__price-note {
+    font-size: 0.8125rem;
+    color: var(--on-surface-variant);
+}
+
+.paywall-screen__cta-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.paywall-screen__secondary {
+    width: 100%;
+    margin-top: 0.625rem;
+    padding: 0.75rem 1rem;
+    border-radius: 999px;
+    border: 1px solid var(--outline, rgba(255, 255, 255, 0.12));
+    background: transparent;
+    color: var(--on-surface);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.paywall-screen__support {
+    margin: 1rem 0 0;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--on-surface-variant);
+}
+
+.paywall-screen__support a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.readonly-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding: 0.5rem 0.75rem;
+    background: rgba(251, 191, 36, 0.12);
+    color: var(--on-surface);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.readonly-banner .material-icons-round {
+    font-size: 1rem;
+    color: var(--gold, #fbbf24);
+}
+
+.readonly-banner__cta {
+    margin-left: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    border: none;
+    border-radius: 999px;
+    background: var(--primary);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
 .trial-banner {
     display: flex;
     align-items: center;

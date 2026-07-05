@@ -7,7 +7,6 @@ import { shortDateLabel, parseIsoDate } from '@/lib/dates';
 import { CURRENCY_CHOICES } from '@/lib/currencies';
 import { ACCOUNT_TYPE_CHOICES } from '@/lib/accounts';
 import { toDatetimeLocalValue } from '@/lib/dates';
-import PwaRegister from '@/components/PwaRegister';
 import MoneybagLoader from '@/components/MoneybagLoader';
 import AuthScreen from '@/components/AuthScreen';
 import PaywallScreen from '@/components/PaywallScreen';
@@ -250,7 +249,6 @@ export default function MoneyApp() {
 
   return (
     <div className="app-container bg-md-surface relative shadow-md-3">
-      <PwaRegister />
       {access?.status === 'trial' && (
         <div className="trial-banner">
           <span className="material-icons-round">schedule</span>

@@ -3583,6 +3583,22 @@ header.app-header {
     line-height: 1.35;
 }
 
+.pwa-install__hint--muted {
+    opacity: 0.75;
+    font-style: italic;
+}
+
+.pwa-install__error {
+    margin: 0 0 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 10px;
+    background: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    text-align: center;
+}
+
 /* Standalone PWA (installed app) — safe areas */
 @media (display-mode: standalone) {
     .app-nav {

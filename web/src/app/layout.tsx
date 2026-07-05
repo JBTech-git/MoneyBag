@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [{ url: '/icons/app-icon.png?v=5', type: 'image/png', sizes: '32x32' }],
-    apple: [{ url: '/icons/apple-touch-icon.png?v=5', type: 'image/png', sizes: '180x180' }],
+    apple: [{ url: '/icons/apple-touch-icon.png?v=6', type: 'image/png', sizes: '180x180' }],
     shortcut: ['/icons/app-icon.png?v=5'],
   },
 };
@@ -43,7 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-title" content="Moneybag" />
         <link rel="icon" href="/icons/app-icon.png?v=5" type="image/png" sizes="32x32" />
         <link rel="shortcut icon" href="/icons/app-icon.png?v=5" type="image/png" />
-        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=5" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=6" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
         <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />

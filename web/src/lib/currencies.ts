@@ -29,6 +29,7 @@ export function formatAmount(
   amount: number | string,
   currencyCode: string,
   positionOverride?: string | null,
+  locale = 'en-IN',
 ): string {
   const config = getCurrency(currencyCode);
   const value = Number(amount || 0);
@@ -36,8 +37,8 @@ export function formatAmount(
   const abs = Math.abs(value);
   const absText =
     decimalPlaces === 0
-      ? Math.round(abs).toLocaleString('en-US')
-      : abs.toLocaleString('en-US', {
+      ? Math.round(abs).toLocaleString(locale)
+      : abs.toLocaleString(locale, {
           minimumFractionDigits: decimalPlaces,
           maximumFractionDigits: decimalPlaces,
         });

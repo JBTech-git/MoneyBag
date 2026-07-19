@@ -21,12 +21,17 @@ export type AnalysisQuery = {
   range?: AnalysisRange;
 };
 
-function resolveRange(year: number, month: number, range: AnalysisRange) {
+function resolveRange(
+  year: number,
+  month: number,
+  range: AnalysisRange,
+  lang: 'en' | 'hi' | 'bn',
+) {
   const today = new Date();
   if (range === 'week') {
     const end = endOfDay(today);
     const start = startOfDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6));
-    return { start, end, label: 'Last 7 days' };
+    return { start, end, label: lang === 'hi' ? '7 दिन' : lang === 'bn' ? '৭ দিন' : 'Last 7 days' };
   }
   if (range === 'year') {
     return {
@@ -36,16 +41,26 @@ function resolveRange(year: number, month: number, range: AnalysisRange) {
     };
   }
   if (range === 'all') {
-    return { start: null as Date | null, end: null as Date | null, label: 'All time' };
+    return {
+      start: null as Date | null,
+      end: null as Date | null,
+      label: lang === 'hi' ? 'सभी समय' : lang === 'bn' ? 'সব সময়' : 'All time',
+    };
   }
   return {
     start: startOfMonth(year, month),
     end: endOfMonth(year, month),
-    label: monthLabel(year, month),
+    label: monthLabel(year, month, lang),
   };
 }
 
 export async function getAnalysisReport(userId: string, query: AnalysisQuery = {}) {
+  const { loadSettings } = await import('./settings');
+  const settings = await loadSettings(userId);
+  const lang = (settings.language === 'hi' || settings.language === 'bn' ? settings.language : 'en') as
+    | 'en'
+    | 'hi'
+    | 'bn';
   const now = new Date();
   const year = query.year && query.year > 2000 ? query.year : now.getFullYear();
   const month = query.month && query.month >= 1 && query.month <= 12 ? query.month : now.getMonth() + 1;
@@ -57,13 +72,13 @@ export async function getAnalysisReport(userId: string, query: AnalysisQuery = {
       ? Math.floor(query.accountId)
       : null;
 
-  const { start, end, label } = resolveRange(year, month, range);
+  const { start, end, label } = resolveRange(year, month, range, lang);
   const weekStart = startOfDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6));
 
   const typeFilter =
     type === 'income' || type === 'expense'
       ? { transactionType: type }
-      : { transactionType: { in: ['income', 'expense'] as const } };
+      : { transactionType: { in: ['income', 'expense'] } };
 
   const where = {
     userId,
@@ -177,10 +192,10 @@ export async function getAnalysisReport(userId: string, query: AnalysisQuery = {
     _sum: { amount: true },
   });
   const allTimeIncome = toNum(
-    allTimeAgg.find((r) => r.transactionType === 'income')?._sum.amount ?? null,
+    allTimeAgg.find((r) => r.transactionType === 'income')?._sum?.amount ?? null,
   );
   const allTimeExpense = toNum(
-    allTimeAgg.find((r) => r.transactionType === 'expense')?._sum.amount ?? null,
+    allTimeAgg.find((r) => r.transactionType === 'expense')?._sum?.amount ?? null,
   );
 
   return {
@@ -190,7 +205,7 @@ export async function getAnalysisReport(userId: string, query: AnalysisQuery = {
     type,
     account_id: accountId,
     period_label: label,
-    month_label: shortMonthLabel(year, month),
+    month_label: shortMonthLabel(year, month, lang),
     accounts: accounts.map((a) => ({ id: a.id, name: a.name })),
     insights: {
       top_categories: topCategories,

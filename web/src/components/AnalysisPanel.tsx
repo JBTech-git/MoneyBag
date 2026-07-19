@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { BootstrapData } from '@/lib/types';
+import { useT } from '@/components/I18nProvider';
 
 type AnalysisType = 'all' | 'income' | 'expense';
 type AnalysisRange = 'month' | 'week' | 'year' | 'all';
@@ -105,6 +106,7 @@ function DonutChart({
 }
 
 export default function AnalysisPanel({ data, m }: Props) {
+  const { t } = useT();
   const [year, setYear] = useState(data.month_year);
   const [month, setMonth] = useState(data.month_num);
   const [range, setRange] = useState<AnalysisRange>('month');
@@ -128,14 +130,14 @@ export default function AnalysisPanel({ data, m }: Props) {
       });
       const res = await fetch(`/api/analysis?${params}`, { cache: 'no-store' });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Could not load analysis');
+      if (!res.ok) throw new Error(json.error || t('analysis.loadError'));
       setReport(json);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load analysis');
+      setError(err instanceof Error ? err.message : t('analysis.loadError'));
     } finally {
       setLoading(false);
     }
-  }, [year, month, range, type, accountId]);
+  }, [year, month, range, type, accountId, t]);
 
   useEffect(() => {
     loadReport();
@@ -180,7 +182,7 @@ export default function AnalysisPanel({ data, m }: Props) {
     <div className="form-sheet analysis-panel">
       <header className="analysis-head">
         <div>
-          <p className="analysis-head__eyebrow">Report</p>
+          <p className="analysis-head__eyebrow">{t('analysis.report')}</p>
           <h2 className="analysis-head__title">{periodLabel}</h2>
         </div>
         <div className="analysis-head__actions">
@@ -189,9 +191,9 @@ export default function AnalysisPanel({ data, m }: Props) {
               type="button"
               className="analysis-clear-filters"
               onClick={clearFilters}
-              aria-label="Clear filters"
+              aria-label={t('analysis.clearFilters')}
             >
-              Clear
+              {t('analysis.clear')}
             </button>
           )}
           <button
@@ -199,7 +201,7 @@ export default function AnalysisPanel({ data, m }: Props) {
             className={`analysis-filter-toggle ${filtersOpen ? 'is-open' : ''} ${filtersActive ? 'is-active' : ''}`}
             onClick={() => setFiltersOpen((v) => !v)}
             aria-expanded={filtersOpen}
-            aria-label={filtersOpen ? 'Hide filters' : 'Show filters'}
+            aria-label={filtersOpen ? t('analysis.hideFilters') : t('analysis.showFilters')}
           >
             <span className="material-icons-round">tune</span>
           </button>
@@ -216,20 +218,20 @@ export default function AnalysisPanel({ data, m }: Props) {
               className={`analysis-chip ${range === r ? 'is-active' : ''}`}
               onClick={() => setRange(r)}
             >
-              {r === 'month' ? 'Month' : r === 'week' ? '7 days' : r === 'year' ? 'Year' : 'All time'}
+              {r === 'month' ? t('analysis.month') : r === 'week' ? t('analysis.week') : r === 'year' ? t('analysis.year') : t('analysis.allTime')}
             </button>
           ))}
         </div>
 
         <div className="analysis-filters__row">
-          {(['all', 'income', 'expense'] as AnalysisType[]).map((t) => (
+          {(['all', 'income', 'expense'] as AnalysisType[]).map((filterType) => (
             <button
-              key={t}
+              key={filterType}
               type="button"
-              className={`analysis-chip ${type === t ? 'is-active' : ''}`}
-              onClick={() => setType(t)}
+              className={`analysis-chip ${type === filterType ? 'is-active' : ''}`}
+              onClick={() => setType(filterType)}
             >
-              {t === 'all' ? 'All' : t === 'income' ? 'Income' : 'Expense'}
+              {filterType === 'all' ? t('analysis.all') : filterType === 'income' ? t('analysis.income') : t('analysis.expense')}
             </button>
           ))}
         </div>
@@ -240,7 +242,7 @@ export default function AnalysisPanel({ data, m }: Props) {
               <button
                 type="button"
                 className="analysis-month-nav__btn"
-                aria-label="Previous"
+                aria-label={t('common.previous')}
                 onClick={() => {
                   if (range === 'year') setYear((y) => y - 1);
                   else {
@@ -258,7 +260,7 @@ export default function AnalysisPanel({ data, m }: Props) {
               <button
                 type="button"
                 className="analysis-month-nav__btn"
-                aria-label="Next"
+                aria-label={t('common.next')}
                 onClick={() => {
                   if (range === 'year') setYear((y) => y + 1);
                   else {
@@ -286,7 +288,7 @@ export default function AnalysisPanel({ data, m }: Props) {
                 setAccountId(v === 'all' ? 'all' : Number(v));
               }}
             >
-              <option value="all">All wallets</option>
+              <option value="all">{t('analysis.allWallets')}</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -300,14 +302,14 @@ export default function AnalysisPanel({ data, m }: Props) {
 
       {error && <p className="analysis-error">{error}</p>}
       {loading && !report ? (
-        <p className="analysis-empty">Loading report…</p>
+        <p className="analysis-empty">{t('analysis.loading')}</p>
       ) : (
         <>
           <section className={`analysis-card analysis-card--hero ${loading ? 'is-loading' : ''}`}>
             <div className="analysis-donut-stage">
               <DonutChart income={monthIncome} expense={monthSpent} />
               <div className="analysis-donut-center">
-                <span className="analysis-donut-center__label">Net</span>
+                <span className="analysis-donut-center__label">{t('analysis.net')}</span>
                 <strong className={`analysis-donut-center__value ${monthNet >= 0 ? 'is-pos' : 'is-neg'}`}>
                   {monthNet >= 0 ? '+' : '−'}{m(Math.abs(monthNet))}
                 </strong>
@@ -317,13 +319,13 @@ export default function AnalysisPanel({ data, m }: Props) {
             <div className="analysis-split">
               <div className="analysis-split__chip analysis-split__chip--in">
                 <span className="analysis-split__dot" />
-                <span className="analysis-split__label">Income</span>
+                <span className="analysis-split__label">{t('analysis.income')}</span>
                 <strong className="analysis-split__amt">+{m(monthIncome)}</strong>
                 <span className="analysis-split__pct">{incomeShare}%</span>
               </div>
               <div className="analysis-split__chip analysis-split__chip--out">
                 <span className="analysis-split__dot" />
-                <span className="analysis-split__label">Spent</span>
+                <span className="analysis-split__label">{t('analysis.expense')}</span>
                 <strong className="analysis-split__amt">−{m(monthSpent)}</strong>
                 <span className="analysis-split__pct">{expenseShare}%</span>
               </div>
@@ -332,22 +334,22 @@ export default function AnalysisPanel({ data, m }: Props) {
 
           <div className="analysis-pills">
             <div className="analysis-pill">
-              <span className="analysis-pill__k">7 days</span>
+              <span className="analysis-pill__k">{t('analysis.week')}</span>
               <span className="analysis-pill__v amount-expense">−{m(weekSpent)}</span>
             </div>
             <div className="analysis-pill">
-              <span className="analysis-pill__k">Assets</span>
+              <span className="analysis-pill__k">{t('ledger.assets')}</span>
               <span className="analysis-pill__v">{m(report?.total_assets ?? data.total_assets)}</span>
             </div>
             <div className="analysis-pill">
-              <span className="analysis-pill__k">Txns</span>
+              <span className="analysis-pill__k">{t('ledger.txns')}</span>
               <span className="analysis-pill__v">{insights?.txn_count ?? 0}</span>
             </div>
           </div>
 
           {range === 'month' && (weekSpent > 0 || monthSpent > 0) && (
             <section className="analysis-card">
-              <h3 className="analysis-card__title">Week vs month</h3>
+              <h3 className="analysis-card__title">{t('analysis.weekVsMonth')}</h3>
               <div className="analysis-columns">
                 <div className="analysis-columns__item">
                   <div className="analysis-columns__rail">
@@ -356,14 +358,14 @@ export default function AnalysisPanel({ data, m }: Props) {
                       style={{ height: `${Math.max(10, weekRatio * 100)}%` }}
                     />
                   </div>
-                  <span className="analysis-columns__name">7 days</span>
+                  <span className="analysis-columns__name">{t('analysis.week')}</span>
                   <span className="analysis-columns__amt amount-expense">−{m(weekSpent)}</span>
                 </div>
                 <div className="analysis-columns__item">
                   <div className="analysis-columns__rail">
                     <div className="analysis-columns__fill analysis-columns__fill--month" style={{ height: '100%' }} />
                   </div>
-                  <span className="analysis-columns__name">Month</span>
+                  <span className="analysis-columns__name">{t('analysis.month')}</span>
                   <span className="analysis-columns__amt amount-expense">−{m(monthSpent)}</span>
                 </div>
               </div>
@@ -372,10 +374,10 @@ export default function AnalysisPanel({ data, m }: Props) {
 
           <section className="analysis-card">
             <h3 className="analysis-card__title">
-              {type === 'income' ? 'Top income sources' : 'Top categories'}
+              {type === 'income' ? t('analysis.topIncome') : t('analysis.topCategories')}
             </h3>
             {cats.length === 0 ? (
-              <p className="analysis-empty">No transactions for this filter.</p>
+              <p className="analysis-empty">{t('analysis.noFilterTxns')}</p>
             ) : (
               <ul className="analysis-cats">
                 {cats.map((c) => (
@@ -411,7 +413,7 @@ export default function AnalysisPanel({ data, m }: Props) {
           </section>
 
           <section className="analysis-card">
-            <h3 className="analysis-card__title">All time</h3>
+            <h3 className="analysis-card__title">{t('analysis.allTimeTitle')}</h3>
             <div className="analysis-lifetime">
               <div className="analysis-lifetime__row">
                 <div className="analysis-lifetime__meta">
@@ -450,7 +452,7 @@ export default function AnalysisPanel({ data, m }: Props) {
 
       <a className="btn-primary analysis-export" href="/api/export/transactions" download>
         <span className="material-icons-round">download</span>
-        Export transactions CSV
+        {t('analysis.exportCsv')}
       </a>
     </div>
   );

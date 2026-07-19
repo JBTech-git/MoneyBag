@@ -1,3 +1,5 @@
+import { accountTypeLabel, parseLanguage } from '@/lib/i18n';
+
 export const ACCOUNT_TYPES: Record<
   string,
   { label: string; icon: string; color: string }
@@ -10,8 +12,21 @@ export const ACCOUNT_TYPES: Record<
   wallet: { label: 'E-Wallet', icon: 'account_balance_wallet', color: '#00897B' },
 };
 
-export function accountTypeMeta(accountType: string) {
-  return ACCOUNT_TYPES[accountType] || ACCOUNT_TYPES.cash;
+export function accountTypeMeta(accountType: string, language?: string) {
+  const meta = ACCOUNT_TYPES[accountType] || ACCOUNT_TYPES.cash;
+  const lang = parseLanguage(language, 'en');
+  return {
+    ...meta,
+    label: accountTypeLabel(lang, accountType in ACCOUNT_TYPES ? accountType : 'cash'),
+  };
+}
+
+export function accountTypeChoices(language?: string) {
+  const lang = parseLanguage(language, 'en');
+  return Object.keys(ACCOUNT_TYPES).map((key) => ({
+    value: key,
+    label: accountTypeLabel(lang, key),
+  }));
 }
 
 export const ACCOUNT_TYPE_CHOICES = Object.entries(ACCOUNT_TYPES).map(

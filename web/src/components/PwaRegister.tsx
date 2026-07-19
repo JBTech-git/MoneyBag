@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useT } from '@/components/I18nProvider';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -42,6 +43,7 @@ async function registerServiceWorker() {
 }
 
 export default function PwaRegister() {
+  const { t } = useT();
   const [ready, setReady] = useState(false);
   const [open, setOpen] = useState(false);
   const [canInstall, setCanInstall] = useState(false);
@@ -172,16 +174,16 @@ export default function PwaRegister() {
             setInstallError('');
             setOpen(true);
           }}
-          aria-label="Install Moneybag"
+          aria-label={t('pwa.ariaInstall')}
         >
           <span className="material-icons-round">download</span>
-          <span>Install</span>
+          <span>{t('pwa.install')}</span>
         </button>
       )}
 
       {open && (
         <div className="pwa-install" role="dialog" aria-modal="true" aria-labelledby="pwa-install-title">
-          <button type="button" className="pwa-install__backdrop" onClick={dismiss} aria-label="Close" />
+          <button type="button" className="pwa-install__backdrop" onClick={dismiss} aria-label={t('pwa.close')} />
           <div className="pwa-install__sheet pwa-install__sheet--compact">
             <div className="pwa-install__handle" />
 
@@ -190,12 +192,10 @@ export default function PwaRegister() {
               <img src="/icons/Money-bag-5.png" alt="" className="pwa-install__icon-sm" width={56} height={56} />
               <div className="pwa-install__copy">
                 <h2 id="pwa-install-title" className="pwa-install__title pwa-install__title--sm">
-                  Install Moneybag
+                  {t('pwa.installTitle')}
                 </h2>
                 <p className="pwa-install__sub pwa-install__sub--sm">
-                  {canInstall
-                    ? 'Install the app for quick access and full-screen use.'
-                    : 'Follow these steps to add Moneybag to your device.'}
+                  {canInstall ? t('pwa.installSubCan') : t('pwa.installSubManual')}
                 </p>
               </div>
             </div>
@@ -211,7 +211,7 @@ export default function PwaRegister() {
                     onClick={install}
                     disabled={installing}
                   >
-                    {installing ? 'Installing…' : 'Install app'}
+                    {installing ? t('pwa.installing') : t('pwa.installApp')}
                   </button>
                   <button type="button" className="pwa-install__secondary" onClick={dismiss}>
                     Not now
@@ -220,7 +220,7 @@ export default function PwaRegister() {
               ) : (
                 <>
                   {!swReady && !ios && (
-                    <p className="pwa-install__hint pwa-install__hint--muted">Preparing install…</p>
+                    <p className="pwa-install__hint pwa-install__hint--muted">{t('pwa.preparing')}</p>
                   )}
                   {manualSteps}
                   <button type="button" className="pwa-install__primary" onClick={dismiss}>

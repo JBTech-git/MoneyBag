@@ -5,6 +5,7 @@ export type BootstrapData = {
     currencySymbol: string;
     currencyPosition: string;
     theme: string;
+    language: string;
     appMode: string;
     showZeroBalanceBadge: boolean;
   };

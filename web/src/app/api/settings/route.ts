@@ -36,6 +36,7 @@ async function saveSettings(req: NextRequest, userId: string) {
     currencyCode: body.currency_code ?? body.currencyCode,
     currencyPosition: body.currency_position ?? body.currencyPosition,
     theme: body.theme,
+    language: body.language,
     appMode: body.app_mode ?? body.appMode,
     showZeroBalanceBadge:
       body.show_zero_balance_badge !== undefined

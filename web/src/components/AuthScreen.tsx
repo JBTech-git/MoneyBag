@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import MoneybagLoader from '@/components/MoneybagLoader';
+import { useT } from '@/components/I18nProvider';
 import type { AccessState } from '@/lib/subscription';
 
 type Step = 'email' | 'code';
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export default function AuthScreen({ onSuccess }: Props) {
+  const { t } = useT();
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -38,7 +40,7 @@ export default function AuthScreen({ onSuccess }: Props) {
         body: JSON.stringify({ email }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Could not send code');
+      if (!res.ok) throw new Error(json.error || t('auth.sendFailed'));
       if (json.dev_code) {
         setCode(json.dev_code);
         setCodeHint(json.email_fallback ? 'fallback' : 'dev');
@@ -47,7 +49,7 @@ export default function AuthScreen({ onSuccess }: Props) {
       }
       setStep('code');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setLoading(false);
     }
@@ -64,10 +66,10 @@ export default function AuthScreen({ onSuccess }: Props) {
         body: JSON.stringify({ email, code }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Verification failed');
+      if (!res.ok) throw new Error(json.error || t('auth.verifyFailed'));
       onSuccess({ user: json.user, access: json.access });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setLoading(false);
     }
@@ -82,22 +84,22 @@ export default function AuthScreen({ onSuccess }: Props) {
           <h1 className="auth-screen__title">Moneybag</h1>
           <p className="auth-screen__subtitle">
             {step === 'email'
-              ? "Enter your email. We'll send a code to sign in or create your account."
+              ? t('auth.subtitleEmail')
               : codeHint === 'email'
-                ? `Enter the 6-digit code sent to ${email}`
-                : `Sign in to ${email} with the code below`}
+                ? t('auth.subtitleCodeSent', { email })
+                : t('auth.subtitleCodeLocal', { email })}
           </p>
         </div>
 
         {step === 'email' ? (
           <form className="auth-screen__form" onSubmit={sendCode}>
             <label className="auth-screen__field">
-              <span>Email</span>
+              <span>{t('auth.email')}</span>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder={t('auth.emailPlaceholder')}
                 required
                 autoComplete="email"
                 autoFocus
@@ -105,7 +107,7 @@ export default function AuthScreen({ onSuccess }: Props) {
             </label>
             {error && <p className="auth-screen__error">{error}</p>}
             <button type="submit" className="btn-primary auth-screen__submit" disabled={loading}>
-              Continue with email
+              {t('auth.continue')}
             </button>
           </form>
         ) : (
@@ -114,12 +116,10 @@ export default function AuthScreen({ onSuccess }: Props) {
               <div className="auth-screen__code-banner auth-screen__code-banner--dev">
                 <span className="material-icons-round">pin</span>
                 <div>
-                  <p className="auth-screen__code-banner-title">Your sign-in code</p>
+                  <p className="auth-screen__code-banner-title">{t('auth.codeTitle')}</p>
                   <p className="auth-screen__code-banner-value">{code}</p>
                   <p className="auth-screen__code-banner-note">
-                    {codeHint === 'dev'
-                      ? 'Local testing — code shown here instead of email.'
-                      : 'Email could not be sent. Use this code to sign in.'}
+                    {codeHint === 'dev' ? t('auth.codeDevNote') : t('auth.codeFallbackNote')}
                   </p>
                 </div>
               </div>
@@ -128,15 +128,15 @@ export default function AuthScreen({ onSuccess }: Props) {
               <div className="auth-screen__code-banner auth-screen__code-banner--sent">
                 <span className="material-icons-round">mail</span>
                 <div>
-                  <p className="auth-screen__code-banner-title">Check your email</p>
+                  <p className="auth-screen__code-banner-title">{t('auth.checkEmail')}</p>
                   <p className="auth-screen__code-banner-note">
-                    We sent a 6-digit code to <strong>{email}</strong>. Enter it below.
+                    {t('auth.checkEmailNote', { email })}
                   </p>
                 </div>
               </div>
             )}
             <label className="auth-screen__field">
-              <span>Verification code</span>
+              <span>{t('auth.verificationCode')}</span>
               <input
                 ref={codeRef}
                 type="text"
@@ -153,7 +153,7 @@ export default function AuthScreen({ onSuccess }: Props) {
             </label>
             {error && <p className="auth-screen__error">{error}</p>}
             <button type="submit" className="btn-primary auth-screen__submit" disabled={loading || code.length !== 6}>
-              Verify &amp; continue
+              {t('auth.verify')}
             </button>
             <button
               type="button"
@@ -165,7 +165,7 @@ export default function AuthScreen({ onSuccess }: Props) {
                 setCodeHint(null);
               }}
             >
-              Use a different email
+              {t('auth.differentEmail')}
             </button>
           </form>
         )}

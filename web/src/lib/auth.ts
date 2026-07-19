@@ -209,6 +209,7 @@ async function findOrCreateUser(email: string) {
             currencyCode: 'INR',
             currencySymbol: '₹',
             theme: 'light',
+            language: 'en',
           },
         },
         accounts: {

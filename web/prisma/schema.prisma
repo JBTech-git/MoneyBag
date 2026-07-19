@@ -207,6 +207,7 @@ model AppSettings {
   currencySymbol       String   @default("₹") @map("currency_symbol")
   currencyPosition     String   @default("before") @map("currency_position")
   theme                String   @default("light")
+  language             String   @default("en")
   appMode              String   @default("daily") @map("app_mode")
   showZeroBalanceBadge Boolean  @default(true) @map("show_zero_balance_badge")
   updatedAt            DateTime @updatedAt @map("updated_at")

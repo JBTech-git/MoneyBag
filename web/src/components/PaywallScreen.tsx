@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import MoneybagLoader from '@/components/MoneybagLoader';
+import { useT } from '@/components/I18nProvider';
 import type { AccessState } from '@/lib/subscription';
 
 type PhonePeConfig = {
@@ -29,6 +30,7 @@ type Props = {
 };
 
 export default function PaywallScreen({ user, access, onActivated, onViewData, onLogout }: Props) {
+  const { t, lang } = useT();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -58,11 +60,11 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
       return;
     }
     if (!file.type.startsWith('image/')) {
-      setError('Payment proof must be an image');
+      setError(t('paywall.proofImage'));
       return;
     }
     if (file.size > 650_000) {
-      setError('Proof image must be under 650KB');
+      setError(t('paywall.proofSize'));
       return;
     }
     const reader = new FileReader();
@@ -85,7 +87,7 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
       });
       const json = await res.json();
       if (!res.ok) {
-        throw new Error(json.error || 'Could not record payment');
+        throw new Error(json.error || t('paywall.claimFailed'));
       }
       if (json.auto_activated && json.access) {
         onActivated(json.access);
@@ -93,7 +95,7 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
       }
       setSuccess(json.message || 'Payment recorded. Waiting for admin review.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setLoading(false);
     }
@@ -106,21 +108,20 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
       const res = await fetch('/api/subscription/activate', { method: 'POST' });
       const json = await res.json();
       if (!res.ok) {
-        throw new Error(json.error || 'Could not activate subscription');
+        throw new Error(json.error || t('paywall.activateFailed'));
       }
       onActivated(json.access);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setLoading(false);
     }
   };
 
-  const trialEnded = new Date(access.trialEndsAt).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  const trialEnded = new Date(access.trialEndsAt).toLocaleDateString(
+    lang === 'hi' ? 'hi-IN' : lang === 'bn' ? 'bn-IN' : 'en-IN',
+    { day: 'numeric', month: 'short', year: 'numeric' },
+  );
   const supportEmail = config?.supportEmail || 'info.mnybag@gmail.com';
   const priceLabel = config?.priceLabel || '₹99/month';
   const subscriptionDays = config?.subscriptionDays || 30;
@@ -135,47 +136,46 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
         <div className="paywall-screen__icon">
           <span className="material-icons-round">lock</span>
         </div>
-        <h1 className="paywall-screen__title">Your free trial has ended</h1>
+        <h1 className="paywall-screen__title">{t('paywall.title')}</h1>
         <p className="paywall-screen__text">
-          Hi {user.name || user.email}, your trial ended on {trialEnded}. Subscribe to keep adding and
-          editing transactions. Your data is saved and waiting for you.
+          {t('paywall.body', { name: user.name || user.email, date: trialEnded })}
         </p>
 
         <div className="paywall-screen__price">
           <span className="paywall-screen__price-label">{priceLabel}</span>
-          <span className="paywall-screen__price-note">{subscriptionDays}-day access</span>
+          <span className="paywall-screen__price-note">{t('paywall.dayAccess', { days: subscriptionDays })}</span>
         </div>
 
         <ul className="paywall-screen__features">
-          <li><span className="material-icons-round">check_circle</span>Daily &amp; monthly tracking</li>
-          <li><span className="material-icons-round">check_circle</span>Budget categories &amp; wallets</li>
-          <li><span className="material-icons-round">check_circle</span>Activity ledger &amp; calendar</li>
+          <li><span className="material-icons-round">check_circle</span>{t('paywall.featureDaily')}</li>
+          <li><span className="material-icons-round">check_circle</span>{t('paywall.featureBudget')}</li>
+          <li><span className="material-icons-round">check_circle</span>{t('paywall.featureLedger')}</li>
         </ul>
 
         {phonepeEnabled && (
           <div className="paywall-phonepe">
-            <p className="paywall-phonepe__heading">Pay with PhonePe</p>
+            <p className="paywall-phonepe__heading">{t('paywall.payPhonePe')}</p>
             <p className="paywall-phonepe__hint">{phonepe?.instructions}</p>
             {!qrBroken ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 className="paywall-phonepe__qr"
                 src={phonepe?.qrImage || '/payments/phonepe-qr.svg'}
-                alt="PhonePe payment QR code"
+                alt={t('paywall.qrAlt')}
                 onError={() => setQrBroken(true)}
               />
             ) : (
               <div className="paywall-phonepe__qr-missing">
-                QR image not found. Ask support to upload the PhonePe QR.
+                {t('paywall.qrMissing')}
               </div>
             )}
             {phonepe?.upiId ? (
               <p className="paywall-phonepe__upi">
-                UPI ID: <strong>{phonepe.upiId}</strong>
+                {t('paywall.upiId')} <strong>{phonepe.upiId}</strong>
               </p>
             ) : null}
             <label className="paywall-phonepe__field">
-              UTR / transaction ID
+              {t('paywall.utr')}
               <input
                 type="text"
                 value={utr}
@@ -185,17 +185,17 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
               />
             </label>
             <label className="paywall-phonepe__field">
-              Note (optional)
+              {t('paywall.note')}
               <input
                 type="text"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Your name on PhonePe"
+                placeholder={t('paywall.notePlaceholder')}
                 autoComplete="off"
               />
             </label>
             <label className="paywall-phonepe__field">
-              Payment screenshot (optional)
+              {t('paywall.proof')}
               <input
                 type="file"
                 accept="image/*"
@@ -204,7 +204,7 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
             </label>
             {proofData ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img className="paywall-phonepe__proof" src={proofData} alt="Payment proof preview" />
+              <img className="paywall-phonepe__proof" src={proofData} alt={t('paywall.proofAlt')} />
             ) : null}
             <button
               type="button"
@@ -212,7 +212,7 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
               onClick={claimPayment}
               disabled={loading || utr.trim().length < 4}
             >
-              {phonepe?.autoActivate ? "I've paid — activate" : "I've paid — submit for review"}
+              {phonepe?.autoActivate ? t('paywall.activate') : t('paywall.submitReview')}
             </button>
           </div>
         )}
@@ -237,12 +237,12 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
 
         {phonepeEnabled && demoAllowed && (
           <button type="button" className="paywall-screen__secondary" onClick={activateDemo} disabled={loading}>
-            Demo activate (testing)
+            {t('paywall.demoSubscribe')}
           </button>
         )}
 
         <button type="button" className="paywall-screen__secondary" onClick={onViewData}>
-          View my data (read-only)
+          {t('paywall.viewData')}
         </button>
 
         <p className="paywall-screen__support">
@@ -250,9 +250,7 @@ export default function PaywallScreen({ user, access, onActivated, onViewData, o
           <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
         </p>
 
-        <button type="button" className="paywall-screen__logout" onClick={onLogout}>
-          Sign out
-        </button>
+        <button type="button" className="paywall-screen__logout" onClick={onLogout}>{t('paywall.signOut')}</button>
       </div>
     </div>
   );

@@ -114,6 +114,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
   await processDueRecurring(userId);
 
   const mode = query.mode || settings.appMode || 'daily';
+  const lang = settings.language || 'en';
   const today = new Date();
   const selectedDate = query.date ? parseIsoDate(query.date) : today;
   const year = query.year || selectedDate.getFullYear();
@@ -295,7 +296,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
   const allTimeExpense = sumAggByType(allTxAgg, 'expense');
 
   const accountRows = accounts.map((a) => ({
-    account: serializeAccount(a),
+    account: serializeAccount(a, lang),
     balance: balanceMap.get(a.id) ?? toNum(a.initialBalance),
   }));
   const totalAssets = needsAccountBalances
@@ -342,7 +343,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
         kind: 'transfer',
         pk: t.id,
         title: t.categoryName || 'Transfer',
-        subtitle: `${t.account.name} → ${t.toAccount?.name || 'Wallet'} · ${formatTxnTime(t.transactionDate)}`,
+        subtitle: `${t.account.name} → ${t.toAccount?.name || 'Wallet'} · ${formatTxnTime(t.transactionDate, lang)}`,
         amount: toNum(t.amount),
         style: { icon: 'swap_horiz', color: '#0F766E' },
       };
@@ -352,7 +353,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
       kind: t.transactionType,
       pk: t.id,
       title: t.categoryName,
-      subtitle: `${t.account.name} · ${formatTxnTime(t.transactionDate)}${
+      subtitle: `${t.account.name} · ${formatTxnTime(t.transactionDate, lang)}${
         t.linkedExpenseId ? ' · Budget' : t.linkedIncomeId ? ' · Salary' : ''
       }${t.memo ? ` · ${t.memo}` : ''}`,
       amount: toNum(t.amount),
@@ -410,7 +411,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
   const recurring = recurringRules.map(serializeRecurring);
 
   const ledgerEntries = needsLedger
-    ? buildLedgerEntries(monthTxs, incomes, expenses, filter, mode)
+    ? buildLedgerEntries(monthTxs, incomes, expenses, filter, mode, lang)
     : [];
 
   let ledgerMonths: LedgerMonth[] = [];
@@ -423,7 +424,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
       include: { account: true, toAccount: true },
       orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
     });
-    ledgerMonths = buildMonthlyAccordion(accordionTxs, year, month, filter);
+    ledgerMonths = buildMonthlyAccordion(accordionTxs, year, month, filter, 12, lang);
   }
 
   const calendarDays =
@@ -440,6 +441,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
       currencySymbol: settings.currencySymbol,
       currencyPosition: settings.currencyPosition,
       theme: settings.theme,
+      language: settings.language || 'en',
       appMode: settings.appMode,
       showZeroBalanceBadge: settings.showZeroBalanceBadge,
     },
@@ -449,10 +451,10 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     ledger_filter: filter,
     month_year: year,
     month_num: month,
-    current_month: monthLabel(year, month),
-    current_month_short: shortMonthLabel(year, month),
+    current_month: monthLabel(year, month, lang),
+    current_month_short: shortMonthLabel(year, month, lang),
     selected_date_iso: localDateIso(selectedDate),
-    selected_date_label: shortDateLabel(selectedDate),
+    selected_date_label: shortDateLabel(selectedDate, lang),
     is_today: localDateIso(selectedDate) === localDateIso(today),
     day_income: dayIncome,
     day_expense: dayExpense,
@@ -470,7 +472,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     all_time_income: allTimeIncome,
     all_time_expense: allTimeExpense,
     all_time_net: allTimeIncome - allTimeExpense,
-    accounts: accounts.map(serializeAccount),
+    accounts: accounts.map((a) => serializeAccount(a, lang)),
     account_rows: accountRows,
     total_assets: totalAssets,
     default_account_id: defaultAccount?.id ?? null,
@@ -511,16 +513,19 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
   };
 }
 
-function serializeAccount(a: {
-  id: number;
-  name: string;
-  accountType: string;
-  initialBalance: { toString(): string } | number;
-  color: string;
-  isDefault: boolean;
-  includeInTotal: boolean;
-}) {
-  const meta = accountTypeMeta(a.accountType);
+function serializeAccount(
+  a: {
+    id: number;
+    name: string;
+    accountType: string;
+    initialBalance: { toString(): string } | number;
+    color: string;
+    isDefault: boolean;
+    includeInTotal: boolean;
+  },
+  language = 'en',
+) {
+  const meta = accountTypeMeta(a.accountType, language);
   return {
     id: a.id,
     name: a.name,
@@ -555,7 +560,7 @@ type TxRow = {
   toAccount?: { name: string } | null;
 };
 
-function mapTransactionToLedgerEntry(t: TxRow): LedgerEntry {
+function mapTransactionToLedgerEntry(t: TxRow, lang = 'en'): LedgerEntry {
   if (t.transactionType === 'transfer') {
     const toName = t.toAccount?.name || 'Wallet';
     return {
@@ -563,7 +568,7 @@ function mapTransactionToLedgerEntry(t: TxRow): LedgerEntry {
       source: 'daily',
       pk: t.id,
       title: t.categoryName || 'Transfer',
-      subtitle: `${t.account.name} → ${toName} · ${formatTxnTime(t.transactionDate)}${t.memo ? ` · ${t.memo}` : ''}`,
+      subtitle: `${t.account.name} → ${toName} · ${formatTxnTime(t.transactionDate, lang)}${t.memo ? ` · ${t.memo}` : ''}`,
       amount: toNum(t.amount),
       date: localDateIso(t.transactionDate),
       style: { icon: 'swap_horiz', color: '#0F766E' },
@@ -574,7 +579,7 @@ function mapTransactionToLedgerEntry(t: TxRow): LedgerEntry {
     source: 'daily',
     pk: t.id,
     title: t.categoryName,
-    subtitle: `${t.account.name} · ${formatTxnTime(t.transactionDate)}${
+    subtitle: `${t.account.name} · ${formatTxnTime(t.transactionDate, lang)}${
       t.linkedExpenseId ? ' · Budget' : t.linkedIncomeId ? ' · Salary' : ''
     }${t.memo ? ` · ${t.memo}` : ''}`,
     amount: toNum(t.amount),
@@ -592,6 +597,7 @@ function buildMonthlyAccordion(
   endMonth: number,
   filter: string,
   monthsCount = 12,
+  lang = 'en',
 ): LedgerMonth[] {
   const months: LedgerMonth[] = [];
 
@@ -608,7 +614,7 @@ function buildMonthlyAccordion(
       .filter((t) => t.transactionType === 'expense')
       .reduce((s, t) => s + toNum(t.amount), 0);
 
-    const entries = filtered.map(mapTransactionToLedgerEntry);
+    const entries = filtered.map((t) => mapTransactionToLedgerEntry(t, lang));
     const dayMap = new Map<string, LedgerEntry[]>();
     for (const e of entries) {
       const key = e.date || 'other';
@@ -621,7 +627,7 @@ function buildMonthlyAccordion(
       .sort(([a], [b]) => b.localeCompare(a))
       .map(([date, list]) => ({
         date,
-        label: date === 'other' ? 'Other' : shortDateLabel(parseIsoDate(date)),
+        label: date === 'other' ? 'Other' : shortDateLabel(parseIsoDate(date), lang),
         income: list.filter((x) => x.kind === 'income').reduce((s, x) => s + x.amount, 0),
         expense: list.filter((x) => x.kind === 'expense').reduce((s, x) => s + x.amount, 0),
         entries: list,
@@ -630,8 +636,8 @@ function buildMonthlyAccordion(
     months.push({
       year: y,
       month: m,
-      label: monthLabel(y, m),
-      short_label: shortMonthLabel(y, m),
+      label: monthLabel(y, m, lang),
+      short_label: shortMonthLabel(y, m, lang),
       is_current: y === endYear && m === endMonth,
       entry_count: entries.length,
       income,
@@ -662,6 +668,7 @@ function buildLedgerEntries(
   }>,
   filter: string,
   mode: string,
+  lang = 'en',
 ) {
   if (mode === 'monthly') {
     const entries = [];
@@ -699,7 +706,7 @@ function buildLedgerEntries(
 
   return monthTxs
     .filter((t) => passesLedgerFilter(t.transactionType, filter))
-    .map(mapTransactionToLedgerEntry);
+    .map((t) => mapTransactionToLedgerEntry(t, lang));
 }
 
 function buildCalendarDays(

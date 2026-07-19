@@ -1,5 +1,6 @@
 import { prisma } from './db';
 import { formatAmount, getCurrency } from './currencies';
+import { localeFor, parseLanguage } from './i18n';
 
 export async function loadSettings(userId: string) {
   let settings = await prisma.appSettings.findUnique({ where: { userId } });
@@ -10,6 +11,7 @@ export async function loadSettings(userId: string) {
         currencyCode: 'INR',
         currencySymbol: '₹',
         theme: 'light',
+        language: 'en',
       },
     });
   }
@@ -18,14 +20,15 @@ export async function loadSettings(userId: string) {
 
 export async function formatMoney(amount: number | string, userId: string) {
   const settings = await loadSettings(userId);
-  return formatAmount(amount, settings.currencyCode, settings.currencyPosition);
+  return formatMoneyWith(amount, settings);
 }
 
 export function formatMoneyWith(
   amount: number | string,
-  settings: { currencyCode: string; currencyPosition: string },
+  settings: { currencyCode: string; currencyPosition: string; language?: string },
 ) {
-  return formatAmount(amount, settings.currencyCode, settings.currencyPosition);
+  const locale = localeFor(parseLanguage(settings.language, 'en'));
+  return formatAmount(amount, settings.currencyCode, settings.currencyPosition, locale);
 }
 
 export async function updateSettings(
@@ -35,12 +38,17 @@ export async function updateSettings(
     currencyCode?: string;
     currencyPosition?: string;
     theme?: string;
+    language?: string;
     appMode?: string;
     showZeroBalanceBadge?: boolean;
   },
 ) {
   const currencyCode = data.currencyCode;
   const config = currencyCode ? getCurrency(currencyCode) : null;
+  const language =
+    data.language === 'hi' || data.language === 'bn' || data.language === 'en'
+      ? data.language
+      : undefined;
   return prisma.appSettings.upsert({
     where: { userId },
     create: {
@@ -50,6 +58,7 @@ export async function updateSettings(
       currencySymbol: config?.symbol ?? '₹',
       currencyPosition: data.currencyPosition ?? config?.position ?? 'before',
       theme: data.theme ?? 'light',
+      language: language ?? 'en',
       appMode: data.appMode ?? 'daily',
       showZeroBalanceBadge: data.showZeroBalanceBadge ?? true,
     },
@@ -65,6 +74,7 @@ export async function updateSettings(
         ? { currencyPosition: data.currencyPosition }
         : {}),
       ...(data.theme !== undefined ? { theme: data.theme } : {}),
+      ...(language !== undefined ? { language } : {}),
       ...(data.appMode !== undefined ? { appMode: data.appMode } : {}),
       ...(data.showZeroBalanceBadge !== undefined
         ? { showZeroBalanceBadge: data.showZeroBalanceBadge }

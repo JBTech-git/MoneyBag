@@ -5,12 +5,14 @@ import { money } from '@/lib/formatClient';
 import type { BootstrapData, LedgerEntry, LedgerMonth } from '@/lib/types';
 import { shortDateLabel, parseIsoDate } from '@/lib/dates';
 import { CURRENCY_CHOICES } from '@/lib/currencies';
-import { ACCOUNT_TYPE_CHOICES } from '@/lib/accounts';
 import { toDatetimeLocalValue } from '@/lib/dates';
 import MoneybagLoader from '@/components/MoneybagLoader';
 import AuthScreen from '@/components/AuthScreen';
 import PaywallScreen from '@/components/PaywallScreen';
 import AnalysisPanel from '@/components/AnalysisPanel';
+import { useT } from '@/components/I18nProvider';
+import { LANGUAGE_LABELS, LANGUAGES, parseLanguage } from '@/lib/i18n';
+import { accountTypeChoices } from '@/lib/accounts';
 import type { AccessState } from '@/lib/subscription';
 
 type SessionUser = { id: string; email: string; name: string; isAdmin?: boolean };
@@ -34,6 +36,7 @@ function shiftMonth(year: number, month: number, delta: number) {
 }
 
 export default function MoneyApp() {
+  const { t, setLang, lang } = useT();
   const [authPhase, setAuthPhase] = useState<'checking' | 'guest' | 'paywall' | 'readonly' | 'ready'>('checking');
   const [user, setUser] = useState<SessionUser | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);
@@ -95,6 +98,9 @@ export default function MoneyApp() {
       }
       setData(json);
       document.documentElement.dataset.theme = json.settings.theme;
+      if (json.settings.language) {
+        setLang(parseLanguage(json.settings.language, 'en'));
+      }
       if (json.read_only) {
         setAuthPhase('readonly');
         if (json.access) setAccess(json.access);
@@ -110,7 +116,7 @@ export default function MoneyApp() {
     } finally {
       if (isFirstLoad) setLoading(false);
     }
-  }, []);
+  }, [setLang]);
 
   const beginSession = useCallback(
     (payload: { user: SessionUser; access: AccessState }) => {
@@ -287,7 +293,7 @@ export default function MoneyApp() {
 
   const guardEdit = (action: () => void) => {
     if (readOnly) {
-      showToast('Subscribe to edit your finances', 'error');
+      showToast(t('common.subscribeToEdit'), 'error');
       return;
     }
     action();
@@ -298,9 +304,9 @@ export default function MoneyApp() {
       {readOnly && (
         <div className="readonly-banner">
           <span className="material-icons-round">lock</span>
-          <span>Read-only — subscribe to add or edit</span>
+          <span>{t('common.subscribeToEdit')}</span>
           <button type="button" className="readonly-banner__cta" onClick={openPaywall}>
-            Subscribe
+            {t('common.subscribe')}
           </button>
         </div>
       )}
@@ -308,15 +314,15 @@ export default function MoneyApp() {
         <div className="app-header__bar">
           <div className="mode-switcher mode-switcher--compact app-header__mode">
             <button type="button" className={`mode-switcher__btn ${mode === 'daily' ? 'mode-switcher__btn--active' : ''}`} onClick={() => load({ app_mode: 'daily', txn_view: 'daily' })}>
-              <span className="material-icons-round">today</span><span>Daily</span>
+              <span className="material-icons-round">today</span><span>{t('settings.daily')}</span>
             </button>
             <button type="button" className={`mode-switcher__btn ${mode === 'monthly' ? 'mode-switcher__btn--active' : ''}`} onClick={() => load({ app_mode: 'monthly', txn_view: 'monthly' })}>
-              <span className="material-icons-round">calendar_month</span><span>Budget</span>
+              <span className="material-icons-round">calendar_month</span><span>{t('settings.monthly')}</span>
             </button>
           </div>
           <button type="button" id="header-add-btn" className="app-header__add" onClick={() => guardEdit(() => { setAddType(mode === 'daily' ? 'expense' : 'income'); setSheet({ type: 'add' }); })} style={{ display: tab === 'settings' || readOnly ? 'none' : undefined }}>
             <span className="material-icons-round">add</span>
-            <span className="app-header__add-label">Add</span>
+            <span className="app-header__add-label">{t('home.add')}</span>
           </button>
         </div>
       </header>
@@ -329,14 +335,14 @@ export default function MoneyApp() {
               <>
                 <div className="mm-hero">
                   <div className="mm-hero__eyebrow">
-                    <span>{data.is_today ? 'Today' : data.selected_date_label}</span>
+                    <span>{data.is_today ? t('home.today') : data.selected_date_label}</span>
                     <span className="material-icons-round">today</span>
                   </div>
                   <p className="mm-hero__amount">{m(data.day_net)}</p>
-                  <p className="mm-hero__caption">Day balance</p>
+                  <p className="mm-hero__caption">{t('home.dayBalance')}</p>
                   <div className="grid grid-cols-2 gap-1.5">
-                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--income"><span className="material-icons-round">south_west</span></span><span className="mm-hero-chip__label">Income</span></div><p className="mm-hero-chip__value hero-income">+{m(data.day_income)}</p></div>
-                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--expense"><span className="material-icons-round">north_east</span></span><span className="mm-hero-chip__label">Expense</span></div><p className="mm-hero-chip__value hero-expense">−{m(data.day_expense)}</p></div>
+                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--income"><span className="material-icons-round">south_west</span></span><span className="mm-hero-chip__label">{t('home.income')}</span></div><p className="mm-hero-chip__value hero-income">+{m(data.day_income)}</p></div>
+                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--expense"><span className="material-icons-round">north_east</span></span><span className="mm-hero-chip__label">{t('home.expense')}</span></div><p className="mm-hero-chip__value hero-expense">−{m(data.day_expense)}</p></div>
                   </div>
                   <div className="mm-hero__month-line">
                     <span className="material-icons-round mm-hero__month-icon">calendar_today</span>
@@ -346,30 +352,30 @@ export default function MoneyApp() {
                   </div>
                 </div>
                 <div className="quick-actions quick-actions--three">
-                  <button type="button" className="quick-action quick-action--expense" onClick={() => guardEdit(() => { setAddType('expense'); setSheet({ type: 'add' }); })}><span className="quick-action__icon"><span className="material-icons-round">north_east</span></span>Expense</button>
-                  <button type="button" className="quick-action quick-action--income" onClick={() => guardEdit(() => { setAddType('income'); setSheet({ type: 'add' }); })}><span className="quick-action__icon"><span className="material-icons-round">south_west</span></span>Income</button>
-                  <button type="button" className="quick-action quick-action--transfer" onClick={() => guardEdit(() => setSheet({ type: 'transfer' }))}><span className="quick-action__icon"><span className="material-icons-round">swap_horiz</span></span>Transfer</button>
+                  <button type="button" className="quick-action quick-action--expense" onClick={() => guardEdit(() => { setAddType('expense'); setSheet({ type: 'add' }); })}><span className="quick-action__icon"><span className="material-icons-round">north_east</span></span>{t('home.expense')}</button>
+                  <button type="button" className="quick-action quick-action--income" onClick={() => guardEdit(() => { setAddType('income'); setSheet({ type: 'add' }); })}><span className="quick-action__icon"><span className="material-icons-round">south_west</span></span>{t('home.income')}</button>
+                  <button type="button" className="quick-action quick-action--transfer" onClick={() => guardEdit(() => setSheet({ type: 'transfer' }))}><span className="quick-action__icon"><span className="material-icons-round">swap_horiz</span></span>{t('home.transfer')}</button>
                 </div>
                 {(data.quick_templates?.length ?? 0) > 0 && (
                   <div className="template-chips">
-                    {(data.quick_templates ?? []).map((t) => (
+                    {(data.quick_templates ?? []).map((tpl) => (
                       <button
-                        key={t.id}
+                        key={tpl.id}
                         type="button"
                         className="template-chip"
                         onClick={() => guardEdit(() => {
                           api('/api/transactions', 'POST', {
-                            transaction_type: t.transaction_type,
-                            category_name: t.category_name,
-                            amount: t.amount,
-                            memo: t.memo,
-                            account: t.account_id || data.default_account_id,
+                            transaction_type: tpl.transaction_type,
+                            category_name: tpl.category_name,
+                            amount: tpl.amount,
+                            memo: tpl.memo,
+                            account: tpl.account_id || data.default_account_id,
                             txn_datetime: toDatetimeLocalValue(new Date()),
                           });
                         })}
                       >
-                        <span className="template-chip__label">{t.label}</span>
-                        {t.amount > 0 && <span className="template-chip__amt">{m(t.amount)}</span>}
+                        <span className="template-chip__label">{tpl.label}</span>
+                        {tpl.amount > 0 && <span className="template-chip__amt">{m(tpl.amount)}</span>}
                       </button>
                     ))}
                   </div>
@@ -377,13 +383,13 @@ export default function MoneyApp() {
                 {(data.insights?.top_categories?.length || (data.insights?.month_spent ?? 0) > 0) && (
                   <div className="insights-card">
                     <div className="insights-card__head">
-                      <h2 className="insights-card__title">This month</h2>
+                      <h2 className="insights-card__title">{t('home.thisMonth')}</h2>
                       <span className="insights-card__spent">−{m(data.insights?.month_spent ?? 0)}</span>
                     </div>
                     <div className="insights-card__meta">
-                      <span>Last 7 days −{m(data.insights?.week_spent ?? 0)}</span>
+                      <span>{t('home.last7Days', { amount: m(data.insights?.week_spent ?? 0) })}</span>
                       {(data.insights?.budget_used_pct ?? 0) > 0 && (
-                        <span>Budget {data.insights?.budget_used_pct}%</span>
+                        <span>{t('home.budgetPct', { pct: data.insights?.budget_used_pct ?? 0 })}</span>
                       )}
                     </div>
                     {(data.insights?.top_categories?.length ?? 0) > 0 && (
@@ -404,12 +410,12 @@ export default function MoneyApp() {
                       </div>
                     )}
                     <button type="button" className="insights-card__more" onClick={() => setSheet({ type: 'analysis' })}>
-                      Open analysis
+                      {t('home.openAnalysis')}
                     </button>
                   </div>
                 )}
                 <div className="section-head">
-                  <h2 className="section-head__title">Recent</h2>
+                  <h2 className="section-head__title">{t('home.recent')}</h2>
                   <button type="button" className="section-icon-btn" onClick={() => load({ tab: 'ledger' })}><span className="material-icons-round">arrow_forward</span></button>
                 </div>
                 <ActivityList items={data.recent_activity} m={m} onOpen={(id) => guardEdit(() => setSheet({ type: 'edit-tx', id }))} />
@@ -417,22 +423,22 @@ export default function MoneyApp() {
             ) : (
               <>
                 <div className="mm-hero">
-                  <div className="mm-hero__eyebrow"><span>{data.current_month_short} Plan</span><span className="material-icons-round">account_balance_wallet</span></div>
+                  <div className="mm-hero__eyebrow"><span>{t('home.planSuffix', { month: data.current_month_short })}</span><span className="material-icons-round">account_balance_wallet</span></div>
                   <p className="mm-hero__amount">{m(data.plan_balance)}</p>
-                  <p className="mm-hero__caption">{data.is_balanced && data.show_zero_balance_badge ? 'Fully allocated' : data.plan_balance > 0 ? 'Left to allocate' : data.plan_balance < 0 ? 'Over budget' : 'Plan balance'}</p>
+                  <p className="mm-hero__caption">{data.is_balanced && data.show_zero_balance_badge ? t('home.fullyAllocated') : data.plan_balance > 0 ? t('home.leftToAllocate') : data.plan_balance < 0 ? t('home.overBudget') : t('home.planBalance')}</p>
                   <div className="grid grid-cols-2 gap-1.5">
-                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--income"><span className="material-icons-round">south_west</span></span><span className="mm-hero-chip__label">Income</span></div><p className="mm-hero-chip__value hero-income">+{m(data.total_income)}</p></div>
-                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--expense"><span className="material-icons-round">north_east</span></span><span className="mm-hero-chip__label">Budget</span></div><p className="mm-hero-chip__value hero-expense">{m(data.total_planned)}</p></div>
+                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--income"><span className="material-icons-round">south_west</span></span><span className="mm-hero-chip__label">{t('home.income')}</span></div><p className="mm-hero-chip__value hero-income">+{m(data.total_income)}</p></div>
+                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--expense"><span className="material-icons-round">north_east</span></span><span className="mm-hero-chip__label">{t('home.budget')}</span></div><p className="mm-hero-chip__value hero-expense">{m(data.total_planned)}</p></div>
                   </div>
                   <div className="mm-hero__month-line">
                     <span className="material-icons-round mm-hero__month-icon">payments</span>
                     <span>{m(data.actual_spent)}</span><span className="opacity-60">·</span>
-                    <span>{m(data.budget_remaining)} left</span><span className="opacity-60">·</span>
+                    <span>{t('home.left', { amount: m(data.budget_remaining) })}</span><span className="opacity-60">·</span>
                     <span>{data.budget_spent_pct}%</span>
                   </div>
                 </div>
                 <div className="section-head">
-                  <h2 className="section-head__title">Categories</h2>
+                  <h2 className="section-head__title">{t('home.categories')}</h2>
                   <button type="button" className="section-icon-btn" onClick={() => load({ tab: 'ledger' })}><span className="material-icons-round">edit</span></button>
                 </div>
                 <BudgetList expenses={data.budget_expense_rows} incomes={data.budget_income_rows} m={m} onExpense={(id) => guardEdit(() => setSheet({ type: 'edit-expense', id }))} onIncome={(id) => guardEdit(() => setSheet({ type: 'edit-income', id }))} />
@@ -448,9 +454,9 @@ export default function MoneyApp() {
                 <div className="ledger-toolbar">
                   <div className="txn-view-switcher txn-view-switcher--compact">
                     {([
-                      { key: 'daily', icon: 'today', label: 'Daily' },
-                      { key: 'monthly', icon: 'view_list', label: 'Monthly' },
-                      { key: 'calendar', icon: 'calendar_month', label: 'Calendar' },
+                      { key: 'daily', icon: 'today', label: t('ledger.daily') },
+                      { key: 'monthly', icon: 'view_list', label: t('ledger.monthly') },
+                      { key: 'calendar', icon: 'calendar_month', label: t('ledger.calendar') },
                     ] as const).map((v) => (
                       <button
                         key={v.key}
@@ -471,16 +477,16 @@ export default function MoneyApp() {
                     <span className="material-icons-round">search</span>
                     <input
                       type="search"
-                      placeholder="Search category, memo, amount…"
+                      placeholder={t('form.searchPlaceholder')}
                       value={ledgerSearch}
                       onChange={(e) => setLedgerSearch(e.target.value)}
                     />
                     <select
                       value={ledgerAccountId === 'all' ? 'all' : String(ledgerAccountId)}
                       onChange={(e) => setLedgerAccountId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                      aria-label="Filter by wallet"
+                      aria-label={t('form.filterWallet')}
                     >
-                      <option value="all">All wallets</option>
+                      <option value="all">{t('form.allWallets')}</option>
                       {data.accounts.map((a) => (
                         <option key={a.id} value={a.id}>{a.name}</option>
                       ))}
@@ -488,11 +494,11 @@ export default function MoneyApp() {
                   </div>
                   <div className="filter-bar ledger-filter filter-bar--values">
                   {[
-                    { key: 'all', icon: 'apps', label: 'All', value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' },
-                    { key: 'income', icon: 'south_west', label: 'Income', value: data.all_time_income, cls: 'amount-income', chip: 'filter-chip--income' },
-                    { key: 'expense', icon: 'north_east', label: 'Expense', value: data.all_time_expense, cls: 'amount-expense', chip: 'filter-chip--expense' },
-                    ...(mode !== 'monthly' ? [{ key: 'transfer', icon: 'swap_horiz', label: 'Move', value: 0, cls: '', chip: '' }] : []),
-                    ...(mode !== 'monthly' ? [{ key: 'total', icon: 'account_balance', label: 'Total', value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' }] : []),
+                    { key: 'all', icon: 'apps', label: t('ledger.all'), value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' },
+                    { key: 'income', icon: 'south_west', label: t('home.income'), value: data.all_time_income, cls: 'amount-income', chip: 'filter-chip--income' },
+                    { key: 'expense', icon: 'north_east', label: t('home.expense'), value: data.all_time_expense, cls: 'amount-expense', chip: 'filter-chip--expense' },
+                    ...(mode !== 'monthly' ? [{ key: 'transfer', icon: 'swap_horiz', label: t('ledger.move'), value: 0, cls: '', chip: '' }] : []),
+                    ...(mode !== 'monthly' ? [{ key: 'total', icon: 'account_balance', label: t('ledger.total'), value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' }] : []),
                   ].map((f) => (
                     <button key={f.key} type="button" className={`filter-chip ${f.chip || ''} ${data.ledger_filter === f.key ? 'filter-chip--active' : ''}`} onClick={() => load({ ledger_filter: f.key })}>
                       <span className="material-icons-round">{f.icon}</span>
@@ -519,15 +525,15 @@ export default function MoneyApp() {
                 </div>
                 <div className="month-accordion__stats ledger-total-summary__stats">
                   <div className="month-accordion__stat month-accordion__stat--income">
-                    <span className="month-accordion__stat-label">Income</span>
+                    <span className="month-accordion__stat-label">{t('home.income')}</span>
                     <span className="month-accordion__stat-value amount-income">+{m(data.all_time_income)}</span>
                   </div>
                   <div className="month-accordion__stat month-accordion__stat--expense">
-                    <span className="month-accordion__stat-label">Expense</span>
+                    <span className="month-accordion__stat-label">{t('home.expense')}</span>
                     <span className="month-accordion__stat-value amount-expense">−{m(data.all_time_expense)}</span>
                   </div>
                   <div className="month-accordion__stat month-accordion__stat--net">
-                    <span className="month-accordion__stat-label">Net</span>
+                    <span className="month-accordion__stat-label">{t('analysis.net')}</span>
                     <span className={`month-accordion__stat-value ${data.all_time_net >= 0 ? 'amount-income' : 'amount-expense'}`}>{m(data.all_time_net)}</span>
                   </div>
                 </div>
@@ -577,20 +583,20 @@ export default function MoneyApp() {
         {tab === 'accounts' && (
           <div className="space-y-4">
             <div className="account-total-card">
-              <div className="flex items-center justify-between mb-1"><span className="text-sm opacity-90">Total Assets</span><span className="material-icons-round opacity-80">account_balance</span></div>
+              <div className="flex items-center justify-between mb-1"><span className="text-sm opacity-90">{t('home.totalAssets')}</span><span className="material-icons-round opacity-80">account_balance</span></div>
               <p className="text-2xl font-bold tracking-tight">{m(data.total_assets)}</p>
             </div>
             <div className="space-y-2">
               {data.account_rows.map((row) => (
                 <div key={row.account.id} className="account-card ripple-item" onClick={() => guardEdit(() => setSheet({ type: 'edit-account', id: row.account.id }))}>
                   <div className="icon-circle" style={{ background: `${row.account.color}22`, color: row.account.color }}><span className="material-icons-round">{row.account.icon}</span></div>
-                  <div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className="font-medium truncate">{row.account.name}</p>{row.account.is_default && <span className="account-badge">Default</span>}</div><p className="text-xs text-md-on-surface-variant">{row.account.type_label}</p></div>
+                  <div className="flex-1 min-w-0"><div className="flex items-center gap-2"><p className="font-medium truncate">{row.account.name}</p>{row.account.is_default && <span className="account-badge">{t('home.default')}</span>}</div><p className="text-xs text-md-on-surface-variant">{row.account.type_label}</p></div>
                   <div className="text-right flex-shrink-0"><p className={`font-semibold ${row.balance < 0 ? 'amount-expense' : ''}`}>{m(row.balance)}</p><span className="material-icons-round text-md-on-surface-variant text-lg">chevron_right</span></div>
                 </div>
               ))}
             </div>
             <button type="button" className="w-full py-3 rounded-full border border-md-outline text-md-primary font-medium text-sm flex items-center justify-center gap-1" onClick={() => guardEdit(() => setSheet({ type: 'create-account' }))}>
-              <span className="material-icons-round text-lg">add</span> Add account
+              <span className="material-icons-round text-lg">add</span> {t('home.addAccount')}
             </button>
           </div>
         )}
@@ -599,33 +605,33 @@ export default function MoneyApp() {
           <div className="more-menu"><div className="more-menu__grid">
             <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => guardEdit(() => setSheet({ type: 'transfer' }))}>
               <div className="more-feature-card__icon"><span className="material-icons-round">swap_horiz</span></div>
-              <div className="more-feature-card__text"><p className="more-feature-card__title">Transfer</p><p className="more-feature-card__desc">Move money between wallets</p></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.transfer')}</p><p className="more-feature-card__desc">{t('more.transferDesc')}</p></div>
               <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
             </button>
             <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => guardEdit(() => setSheet({ type: 'recurring' }))}>
               <div className="more-feature-card__icon"><span className="material-icons-round">event_repeat</span></div>
-              <div className="more-feature-card__text"><p className="more-feature-card__title">Recurring</p><p className="more-feature-card__desc">Salary, rent, bills on autopilot</p></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.recurring')}</p><p className="more-feature-card__desc">{t('more.recurringDesc')}</p></div>
               <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
             </button>
             <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => guardEdit(() => setSheet({ type: 'templates' }))}>
               <div className="more-feature-card__icon"><span className="material-icons-round">bolt</span></div>
-              <div className="more-feature-card__text"><p className="more-feature-card__title">Quick templates</p><p className="more-feature-card__desc">One-tap common expenses</p></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.templates')}</p><p className="more-feature-card__desc">{t('more.templatesDesc')}</p></div>
               <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
             </button>
             <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => setSheet({ type: 'analysis' })}>
               <div className="more-feature-card__icon"><span className="material-icons-round">analytics</span></div>
-              <div className="more-feature-card__text"><p className="more-feature-card__title">Analysis</p><p className="more-feature-card__desc">Spending insights &amp; CSV export</p></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.analysis')}</p><p className="more-feature-card__desc">{t('more.analysisDesc')}</p></div>
               <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
             </button>
             <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => load({ tab: 'settings' })}>
               <div className="more-feature-card__icon"><span className="material-icons-round">settings</span></div>
-              <div className="more-feature-card__text"><p className="more-feature-card__title">Settings</p><p className="more-feature-card__desc">Theme, currency &amp; accounts</p></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.settings')}</p><p className="more-feature-card__desc">{t('more.settingsDesc')}</p></div>
               <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
             </button>
             {user?.isAdmin && (
               <a className="more-feature-card more-feature-card--settings" href="/admin">
                 <div className="more-feature-card__icon"><span className="material-icons-round">admin_panel_settings</span></div>
-                <div className="more-feature-card__text"><p className="more-feature-card__title">Super Admin</p><p className="more-feature-card__desc">Users, trials &amp; subscriptions</p></div>
+                <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.admin')}</p><p className="more-feature-card__desc">{t('more.adminDesc')}</p></div>
                 <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
               </a>
             )}
@@ -636,28 +642,26 @@ export default function MoneyApp() {
           <div className="space-y-4">
             {user && (
               <div className="settings-account-card">
-                <p className="text-sm text-md-on-surface-variant">Signed in as</p>
+                <p className="text-sm text-md-on-surface-variant">{t('settings.signedInAs')}</p>
                 <p className="font-medium">{user.email}</p>
                 {access?.status === 'active' && (
-                  <p className="text-xs text-md-on-surface-variant mt-1">Subscription active</p>
+                  <p className="text-xs text-md-on-surface-variant mt-1">{t('settings.subscriptionActive')}</p>
                 )}
                 {user.isAdmin && (
                   <a href="/admin" className="admin-settings-link">
-                    Open Super Admin
+                    {t('settings.openAdmin')}
                   </a>
                 )}
               </div>
             )}
             <SettingsForm data={data} onSave={async (body) => {
               if (readOnly) {
-                showToast('Subscribe to edit your finances', 'error');
+                showToast(t('common.subscribeToEdit'), 'error');
                 return;
               }
               await api('/api/settings', 'PUT', body);
             }} />
-            <button type="button" className="w-full py-3 rounded-full border border-md-outline text-md-on-surface font-medium text-sm" onClick={logout}>
-              Sign out
-            </button>
+            <button type="button" className="w-full py-3 rounded-full border border-md-outline text-md-on-surface font-medium text-sm" onClick={logout}>{t('common.signOut')}</button>
           </div>
         )}
       </main>
@@ -671,14 +675,14 @@ export default function MoneyApp() {
           <div className="app-nav__brand" aria-hidden="true">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/icons/Money-bag-5.png" alt="" className="app-nav__brand-icon-img" width={40} height={40} />
-            <div className="app-nav__brand-text"><span className="app-nav__brand-title">Moneybag</span><span className="app-nav__brand-sub">Personal finance</span></div>
+            <div className="app-nav__brand-text"><span className="app-nav__brand-title">Moneybag</span><span className="app-nav__brand-sub">{t('nav.brand')}</span></div>
           </div>
-          <p className="app-nav__section">Menu</p>
+          <p className="app-nav__section">{t('home.menu')}</p>
           {[
-            { id: 'home', icon: 'home', label: 'Home' },
-            { id: 'ledger', icon: 'receipt_long', label: 'Activity' },
-            { id: 'accounts', icon: 'account_balance_wallet', label: 'Wallets' },
-            { id: 'more', icon: 'more_horiz', label: 'More' },
+            { id: 'home', icon: 'home', label: t('nav.home') },
+            { id: 'ledger', icon: 'receipt_long', label: t('nav.activity') },
+            { id: 'accounts', icon: 'account_balance_wallet', label: t('nav.wallets') },
+            { id: 'more', icon: 'more_horiz', label: t('nav.more') },
           ].map((n) => (
             <button key={n.id} type="button" className={`nav-item flex flex-col items-center justify-center flex-1 ${tab === n.id || (n.id === 'more' && tab === 'settings') ? 'active' : ''}`} onClick={() => load({ tab: n.id })}>
               <span className="material-icons-round text-[22px]">{n.icon}</span>
@@ -704,7 +708,7 @@ export default function MoneyApp() {
                   <button type="button" className="analysis-sheet-bar__back" onClick={() => setSheet(null)} aria-label="Close analysis">
                     <span className="material-icons-round">arrow_back</span>
                   </button>
-                  <span className="analysis-sheet-bar__title">Analysis</span>
+                  <span className="analysis-sheet-bar__title">{t('more.analysis')}</span>
                   <span className="analysis-sheet-bar__spacer" />
                 </div>
               ) : (
@@ -828,6 +832,7 @@ function MonthlyAccordion({
   m: (n: number) => string;
   onOpen: (e: LedgerEntry) => void;
 }) {
+  const { t } = useT();
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -854,7 +859,7 @@ function MonthlyAccordion({
     return (
       <div className="empty-state">
         <span className="material-icons-round">receipt_long</span>
-        <p className="font-medium">No transactions</p>
+        <p className="font-medium">{t('home.noTransactions')}</p>
       </div>
     );
   }
@@ -876,22 +881,22 @@ function MonthlyAccordion({
                 <div className="month-accordion__info">
                   <span className="month-accordion__label">{month.short_label}</span>
                   <span className="month-accordion__count">
-                    {month.entry_count} {month.entry_count === 1 ? 'entry' : 'entries'}
+                    {month.entry_count} {month.entry_count === 1 ? t('ledger.entry') : t('ledger.entries')}
                   </span>
                 </div>
                 <span className="material-icons-round month-accordion__chevron">expand_more</span>
               </div>
               <div className="month-accordion__stats">
                 <div className="month-accordion__stat month-accordion__stat--income">
-                  <span className="month-accordion__stat-label">Income</span>
+                  <span className="month-accordion__stat-label">{t('home.income')}</span>
                   <span className="month-accordion__stat-value amount-income">+{m(month.income)}</span>
                 </div>
                 <div className="month-accordion__stat month-accordion__stat--expense">
-                  <span className="month-accordion__stat-label">Expense</span>
+                  <span className="month-accordion__stat-label">{t('home.expense')}</span>
                   <span className="month-accordion__stat-value amount-expense">−{m(month.expense)}</span>
                 </div>
                 <div className="month-accordion__stat month-accordion__stat--net">
-                  <span className="month-accordion__stat-label">Net</span>
+                  <span className="month-accordion__stat-label">{t('analysis.net')}</span>
                   <span className={`month-accordion__stat-value ${month.net >= 0 ? 'amount-income' : 'amount-expense'}`}>
                     {m(month.net)}
                   </span>
@@ -922,7 +927,7 @@ function MonthlyAccordion({
                     </div>
                   ))
                 ) : (
-                  <p className="month-accordion__empty">No transactions</p>
+                  <p className="month-accordion__empty">{t('home.noTransactions')}</p>
                 )}
               </div>
             )}
@@ -1048,20 +1053,22 @@ function ActivityCalendar({
 }
 
 function MonthNav({ data, onChange }: { data: BootstrapData; onChange: (d: number) => void }) {
+  const { t } = useT();
   return (
     <div className="month-nav">
-      <button type="button" className="month-nav__btn" onClick={() => onChange(-1)} aria-label="Previous month"><span className="material-icons-round">chevron_left</span></button>
+      <button type="button" className="month-nav__btn" onClick={() => onChange(-1)} aria-label={t('common.previous')}><span className="material-icons-round">chevron_left</span></button>
       <div className="month-nav__label">
         <span className="month-nav__month">{data.current_month}</span>
-        <span className="month-nav__hint">{data.app_mode === 'daily' ? (data.is_today ? `Today · ${data.selected_date_label}` : data.selected_date_label) : 'Salary plan'}</span>
+        <span className="month-nav__hint">{data.app_mode === 'daily' ? (data.is_today ? `${t('home.today')} · ${data.selected_date_label}` : data.selected_date_label) : t('home.salaryPlan')}</span>
       </div>
-      <button type="button" className="month-nav__btn" onClick={() => onChange(1)} aria-label="Next month"><span className="material-icons-round">chevron_right</span></button>
+      <button type="button" className="month-nav__btn" onClick={() => onChange(1)} aria-label={t('common.next')}><span className="material-icons-round">chevron_right</span></button>
     </div>
   );
 }
 
 function ActivityList({ items, m, onOpen }: { items: BootstrapData['recent_activity']; m: (n: number) => string; onOpen: (id: number) => void }) {
-  if (!items.length) return <div className="empty-state"><span className="material-icons-round">receipt_long</span><p className="font-medium">No activity yet</p></div>;
+  const { t } = useT();
+  if (!items.length) return <div className="empty-state"><span className="material-icons-round">receipt_long</span><p className="font-medium">{t('home.noActivity')}</p></div>;
   return (
     <div className="space-y-2">
       {items.map((e) => (
@@ -1076,10 +1083,11 @@ function ActivityList({ items, m, onOpen }: { items: BootstrapData['recent_activ
 }
 
 function BudgetList({ expenses, incomes, m, onExpense, onIncome }: { expenses: BootstrapData['budget_expense_rows']; incomes: BootstrapData['budget_income_rows']; m: (n: number) => string; onExpense: (id: number) => void; onIncome: (id: number) => void }) {
-  if (!expenses.length && !incomes.length) return <div className="empty-state"><span className="material-icons-round">event_note</span><p className="font-medium">No budget plan yet</p></div>;
+  const { t } = useT();
+  if (!expenses.length && !incomes.length) return <div className="empty-state"><span className="material-icons-round">event_note</span><p className="font-medium">{t('home.noBudgetYet')}</p></div>;
   return (
     <div className="budget-progress-list">
-      {expenses.length > 0 && <p className="text-xs font-medium text-md-on-surface-variant uppercase tracking-wide mb-2">Expenses</p>}
+      {expenses.length > 0 && <p className="text-xs font-medium text-md-on-surface-variant uppercase tracking-wide mb-2">{t('ledger.expenses')}</p>}
       <div className="space-y-2 mb-4">
         {expenses.map((row) => (
           <div key={row.pk} className="budget-progress-card ripple-item" onClick={() => onExpense(row.pk)}>
@@ -1091,7 +1099,7 @@ function BudgetList({ expenses, incomes, m, onExpense, onIncome }: { expenses: B
           </div>
         ))}
       </div>
-      {incomes.length > 0 && <p className="text-xs font-medium text-md-on-surface-variant uppercase tracking-wide mb-2">Income</p>}
+      {incomes.length > 0 && <p className="text-xs font-medium text-md-on-surface-variant uppercase tracking-wide mb-2">{t('home.income')}</p>}
       <div className="space-y-2">
         {incomes.map((row) => (
           <div key={row.pk} className="budget-progress-card ripple-item" onClick={() => onIncome(row.pk)}>
@@ -1108,9 +1116,10 @@ function BudgetList({ expenses, incomes, m, onExpense, onIncome }: { expenses: B
 }
 
 function AccountSelect({ data, value, onChange }: { data: BootstrapData; value: number; onChange: (v: number) => void }) {
+  const { t } = useT();
   return (
     <div className="form-field">
-      <label className="form-field__label">Account</label>
+      <label className="form-field__label">{t('form.account')}</label>
       <select className="md-select" value={value} onChange={(e) => onChange(Number(e.target.value))} required>
         {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name} · {a.type_label}</option>)}
       </select>
@@ -1119,6 +1128,7 @@ function AccountSelect({ data, value, onChange }: { data: BootstrapData; value: 
 }
 
 function DailyAddForm({ data, addType, setAddType, onSubmit, onClose }: { data: BootstrapData; addType: 'expense' | 'income'; setAddType: (t: 'expense' | 'income') => void; onSubmit: (b: unknown) => void; onClose: () => void }) {
+  const { t } = useT();
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [dt, setDt] = useState(toDatetimeLocalValue(new Date()));
@@ -1128,27 +1138,28 @@ function DailyAddForm({ data, addType, setAddType, onSubmit, onClose }: { data: 
   return (
     <form className="form-sheet" onSubmit={(e) => { e.preventDefault(); onSubmit({ transaction_type: addType, category_name: category, amount, txn_datetime: dt, account: accountId, memo }); }}>
       <div className="add-type-tabs">
-        <button type="button" className={`add-type-tab ${addType === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('expense')}><span className="material-icons-round text-base">north_east</span>Expense</button>
-        <button type="button" className={`add-type-tab ${addType === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('income')}><span className="material-icons-round text-base">south_west</span>Income</button>
+        <button type="button" className={`add-type-tab ${addType === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('expense')}><span className="material-icons-round text-base">north_east</span>{t('home.expense')}</button>
+        <button type="button" className={`add-type-tab ${addType === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('income')}><span className="material-icons-round text-base">south_west</span>{t('home.income')}</button>
       </div>
       <div className="form-section">
-        <div className="form-field form-field--amount"><label className="form-field__label">Amount</label><input className="md-input" type="number" step="0.01" min="0" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-        <div className="form-field"><label className="form-field__label">Category</label><input className="md-input" required value={category} onChange={(e) => setCategory(e.target.value)} list="cat-suggestions" /><datalist id="cat-suggestions">{(addType === 'expense' ? data.expense_suggestions : data.income_suggestions).map((s) => <option key={s} value={s} />)}</datalist></div>
+        <div className="form-field form-field--amount"><label className="form-field__label">{t('form.amount')}</label><input className="md-input" type="number" step="0.01" min="0" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.category')}</label><input className="md-input" required value={category} onChange={(e) => setCategory(e.target.value)} list="cat-suggestions" /><datalist id="cat-suggestions">{(addType === 'expense' ? data.expense_suggestions : data.income_suggestions).map((s) => <option key={s} value={s} />)}</datalist></div>
       </div>
       <div className="form-section">
-        <div className="form-field"><label className="form-field__label">Date &amp; time</label><input className="md-input" type="datetime-local" required value={dt} onChange={(e) => setDt(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.dateTime')}</label><input className="md-input" type="datetime-local" required value={dt} onChange={(e) => setDt(e.target.value)} /></div>
         <AccountSelect data={data} value={accountId} onChange={setAccountId} />
-        <div className="form-field"><label className="form-field__label">Memo</label><input className="md-input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="Optional note" /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.memo')}</label><input className="md-input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder={t('form.memoPlaceholder')} /></div>
       </div>
       <div className="form-actions">
         <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
-        <button type="submit" className="btn-primary">Save {addType === 'expense' ? 'Expense' : 'Income'}</button>
+        <button type="submit" className="btn-primary">{addType === 'expense' ? t('form.saveExpense') : t('form.saveIncome')}</button>
       </div>
     </form>
   );
 }
 
 function BudgetAddForm({ data, addType, setAddType, onIncome, onExpense, onClose }: { data: BootstrapData; addType: 'expense' | 'income'; setAddType: (t: 'expense' | 'income') => void; onIncome: (b: unknown) => void; onExpense: (b: unknown) => void; onClose: () => void }) {
+  const { t } = useT();
   const [amount, setAmount] = useState('');
   const [name, setName] = useState('');
   const [accountId, setAccountId] = useState(data.default_account_id || data.accounts[0]?.id || 0);
@@ -1162,31 +1173,32 @@ function BudgetAddForm({ data, addType, setAddType, onIncome, onExpense, onClose
       else onExpense({ ...body, category_name: name, budgeted_amount: amount });
     }}>
       <div className="add-type-tabs">
-        <button type="button" className={`add-type-tab ${addType === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('expense')}>Expense</button>
-        <button type="button" className={`add-type-tab ${addType === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('income')}>Income</button>
+        <button type="button" className={`add-type-tab ${addType === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('expense')}>{t('home.expense')}</button>
+        <button type="button" className={`add-type-tab ${addType === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('income')}>{t('home.income')}</button>
       </div>
       <div className="form-section">
-        <div className="form-field form-field--amount"><label className="form-field__label">{addType === 'income' ? 'Amount' : 'Budgeted amount'}</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-        <div className="form-field"><label className="form-field__label">{addType === 'income' ? 'Source' : 'Category'}</label><input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="form-field form-field--amount"><label className="form-field__label">{addType === 'income' ? t('form.amount') : t('form.budgetedAmount')}</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{addType === 'income' ? t('form.source') : t('form.category')}</label><input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
         <AccountSelect data={data} value={accountId} onChange={setAccountId} />
       </div>
       {addType === 'income' && (
         <div className="form-section form-section--soft">
           <div className="form-toggle-row">
-            <div className="form-toggle-row__text"><p className="form-toggle-row__title">Record in daily ledger</p></div>
+            <div className="form-toggle-row__text"><p className="form-toggle-row__title">{t('form.recordInDaily')}</p></div>
             <label className="md-toggle"><input type="checkbox" className="md-toggle-input" checked={recordToday} onChange={(e) => setRecordToday(e.target.checked)} /><div className="md-toggle-track"><div className="md-toggle-thumb" /></div></label>
           </div>
         </div>
       )}
       <div className="form-actions">
         <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
-        <button type="submit" className="btn-primary">Add {addType === 'income' ? 'Income' : 'Expense'}</button>
+        <button type="submit" className="btn-primary">{addType === 'income' ? t('form.addIncome') : t('form.addExpense')}</button>
       </div>
     </form>
   );
 }
 
 function AccountForm({ account, onSubmit, onDelete, onClose }: { account?: BootstrapData['accounts'][0]; onSubmit: (b: unknown) => void; onDelete?: () => void; onClose: () => void }) {
+  const { lang, t } = useT();
   const [name, setName] = useState(account?.name || '');
   const [accountType, setAccountType] = useState(account?.account_type || 'cash');
   const [initialBalance, setInitialBalance] = useState(String(account?.initial_balance ?? '0'));
@@ -1195,22 +1207,23 @@ function AccountForm({ account, onSubmit, onDelete, onClose }: { account?: Boots
 
   return (
     <form className="form-sheet" onSubmit={(e) => { e.preventDefault(); onSubmit({ name, account_type: accountType, initial_balance: initialBalance, include_in_total: includeInTotal, is_default: isDefault }); }}>
-      <div className="form-sheet__head"><h3 className="form-sheet__title">{account ? 'Edit Account' : 'New Account'}</h3></div>
+      <div className="form-sheet__head"><h3 className="form-sheet__title">{account ? t('form.editAccount') : t('form.newAccount')}</h3></div>
       <div className="form-section">
-        <div className="form-field"><label className="form-field__label">Account name</label><input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
-        <div className="form-field"><label className="form-field__label">Account type</label><select className="md-select" value={accountType} onChange={(e) => setAccountType(e.target.value)}>{ACCOUNT_TYPE_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select></div>
-        <div className="form-field form-field--amount"><label className="form-field__label">Initial balance</label><input className="md-input" type="number" step="0.01" value={initialBalance} onChange={(e) => setInitialBalance(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.accountName')}</label><input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.type')}</label><select className="md-select" value={accountType} onChange={(e) => setAccountType(e.target.value)}>{accountTypeChoices(lang).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select></div>
+        <div className="form-field form-field--amount"><label className="form-field__label">{t('form.initialBalance')}</label><input className="md-input" type="number" step="0.01" value={initialBalance} onChange={(e) => setInitialBalance(e.target.value)} /></div>
       </div>
       <div className="form-actions">
         <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
         {onDelete && <button type="button" className="form-actions__btn form-actions__icon form-actions__btn--danger" onClick={onDelete}><span className="material-icons-round">delete</span></button>}
-        <button type="submit" className="btn-primary">{account ? 'Save' : 'Create Account'}</button>
+        <button type="submit" className="btn-primary">{account ? t('common.save') : t('form.createAccount')}</button>
       </div>
     </form>
   );
 }
 
 function TxEditForm({ data, id, onSubmit, onDelete, onClose }: { data: BootstrapData; id: number; onSubmit: (b: unknown) => void; onDelete: () => void; onClose: () => void }) {
+  const { t } = useT();
   const entry = data.ledger_entries.find((e) => e.pk === id && e.source === 'daily') || data.recent_activity.find((e) => e.pk === id);
   const [amount, setAmount] = useState(String(entry?.amount ?? ''));
   const [category, setCategory] = useState(entry?.title ?? '');
@@ -1230,46 +1243,48 @@ function TxEditForm({ data, id, onSubmit, onDelete, onClose }: { data: Bootstrap
 
   return (
     <form className="form-sheet" onSubmit={(e) => { e.preventDefault(); onSubmit({ transaction_type: entry?.kind || 'expense', category_name: category, amount, txn_datetime: dt, account: accountId, memo }); }}>
-      <div className="form-sheet__head"><h3 className="form-sheet__title">Edit Transaction</h3></div>
+      <div className="form-sheet__head"><h3 className="form-sheet__title">{t('form.editTransaction')}</h3></div>
       <div className="form-section">
-        <div className="form-field form-field--amount"><label className="form-field__label">Amount</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-        <div className="form-field"><label className="form-field__label">Category</label><input className="md-input" required value={category} onChange={(e) => setCategory(e.target.value)} /></div>
-        <div className="form-field"><label className="form-field__label">Date &amp; time</label><input className="md-input" type="datetime-local" required value={dt} onChange={(e) => setDt(e.target.value)} /></div>
+        <div className="form-field form-field--amount"><label className="form-field__label">{t('form.amount')}</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.category')}</label><input className="md-input" required value={category} onChange={(e) => setCategory(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.dateTime')}</label><input className="md-input" type="datetime-local" required value={dt} onChange={(e) => setDt(e.target.value)} /></div>
         <AccountSelect data={data} value={accountId} onChange={setAccountId} />
-        <div className="form-field"><label className="form-field__label">Memo</label><input className="md-input" value={memo} onChange={(e) => setMemo(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.memo')}</label><input className="md-input" value={memo} onChange={(e) => setMemo(e.target.value)} /></div>
       </div>
       <div className="form-actions">
         <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
         <button type="button" className="form-actions__btn form-actions__icon form-actions__btn--danger" onClick={onDelete}><span className="material-icons-round">delete</span></button>
-        <button type="submit" className="btn-primary">Save</button>
+        <button type="submit" className="btn-primary">{t('common.save')}</button>
       </div>
     </form>
   );
 }
 
 function IncomeEditForm({ data, id, onSubmit, onDelete, onClose }: { data: BootstrapData; id: number; onSubmit: (b: unknown) => void; onDelete: () => void; onClose: () => void }) {
+  const { t } = useT();
   const inc = data.incomes.find((i) => i.id === id);
   const [name, setName] = useState(inc?.source_name || '');
   const [amount, setAmount] = useState(String(inc?.amount ?? ''));
   const [accountId, setAccountId] = useState(inc?.account_id || data.default_account_id || 0);
   return (
     <form className="form-sheet" onSubmit={(e) => { e.preventDefault(); onSubmit({ source_name: name, amount, account: accountId }); }}>
-      <div className="form-sheet__head"><h3 className="form-sheet__title">Edit Income</h3></div>
+      <div className="form-sheet__head"><h3 className="form-sheet__title">{t('form.editIncome')}</h3></div>
       <div className="form-section">
-        <div className="form-field form-field--amount"><label className="form-field__label">Amount</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-        <div className="form-field"><label className="form-field__label">Source</label><input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="form-field form-field--amount"><label className="form-field__label">{t('form.amount')}</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.source')}</label><input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
         <AccountSelect data={data} value={accountId} onChange={setAccountId} />
       </div>
       <div className="form-actions">
         <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
         <button type="button" className="form-actions__btn form-actions__icon form-actions__btn--danger" onClick={onDelete}><span className="material-icons-round">delete</span></button>
-        <button type="submit" className="btn-primary">Save</button>
+        <button type="submit" className="btn-primary">{t('common.save')}</button>
       </div>
     </form>
   );
 }
 
 function ExpenseEditForm({ data, id, onSubmit, onDelete, onClose }: { data: BootstrapData; id: number; onSubmit: (b: unknown) => void; onDelete: () => void; onClose: () => void }) {
+  const { t } = useT();
   const exp = data.expenses.find((e) => e.id === id);
   const [name, setName] = useState(exp?.category_name || '');
   const [amount, setAmount] = useState(String(exp?.budgeted_amount ?? ''));
@@ -1277,22 +1292,22 @@ function ExpenseEditForm({ data, id, onSubmit, onDelete, onClose }: { data: Boot
   const [isPaid, setIsPaid] = useState(exp?.is_paid || false);
   return (
     <form className="form-sheet" onSubmit={(e) => { e.preventDefault(); onSubmit({ category_name: name, budgeted_amount: amount, account: accountId, is_paid: isPaid }); }}>
-      <div className="form-sheet__head"><h3 className="form-sheet__title">Edit Expense</h3></div>
+      <div className="form-sheet__head"><h3 className="form-sheet__title">{t('form.editExpense')}</h3></div>
       <div className="form-section">
-        <div className="form-field form-field--amount"><label className="form-field__label">Budgeted amount</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-        <div className="form-field"><label className="form-field__label">Category</label><input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="form-field form-field--amount"><label className="form-field__label">{t('form.budgetedAmount')}</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.category')}</label><input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
         <AccountSelect data={data} value={accountId} onChange={setAccountId} />
       </div>
       <div className="form-section form-section--soft">
         <div className="form-toggle-row">
-          <div className="form-toggle-row__text"><p className="form-toggle-row__title">Mark as paid</p></div>
+          <div className="form-toggle-row__text"><p className="form-toggle-row__title">{t('form.markAsPaid')}</p></div>
           <label className="md-toggle"><input type="checkbox" className="md-toggle-input" checked={isPaid} onChange={(e) => setIsPaid(e.target.checked)} /><div className="md-toggle-track"><div className="md-toggle-thumb" /></div></label>
         </div>
       </div>
       <div className="form-actions">
         <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
         <button type="button" className="form-actions__btn form-actions__icon form-actions__btn--danger" onClick={onDelete}><span className="material-icons-round">delete</span></button>
-        <button type="submit" className="btn-primary">Save</button>
+        <button type="submit" className="btn-primary">{t('common.save')}</button>
       </div>
     </form>
   );
@@ -1300,47 +1315,68 @@ function ExpenseEditForm({ data, id, onSubmit, onDelete, onClose }: { data: Boot
 
 function SettingsForm({ data, onSave }: { data: BootstrapData; onSave: (b: unknown) => void }) {
   const s = data.settings;
+  const { t, setLang, lang } = useT();
   return (
     <form className="form-sheet" onChange={(e) => {
       const form = e.currentTarget;
       const fd = new FormData(form);
+      const nextLang = parseLanguage(fd.get('language'), lang);
+      setLang(nextLang);
       onSave({
         display_name: fd.get('display_name'),
         currency_code: fd.get('currency_code'),
         currency_position: fd.get('currency_position'),
         theme: fd.get('theme'),
+        language: nextLang,
         app_mode: fd.get('app_mode'),
         show_zero_balance_badge: fd.get('show_zero_balance_badge') === 'on',
       });
     }}>
       <div className="form-section">
-        <p className="form-field__label">Profile</p>
-        <div className="form-field"><label className="form-field__label">Display name</label><input className="md-input" name="display_name" defaultValue={s.displayName} /></div>
+        <p className="form-field__label">{t('settings.profile')}</p>
+        <div className="form-field"><label className="form-field__label">{t('settings.displayName')}</label><input className="md-input" name="display_name" defaultValue={s.displayName} /></div>
       </div>
       <div className="form-section">
-        <p className="form-field__label">Currency</p>
-        <div className="form-field"><label className="form-field__label">Select currency</label>
+        <p className="form-field__label">{t('settings.language')}</p>
+        <div className="settings-pill-track">
+          {LANGUAGES.map((code) => (
+            <label key={code} className="cursor-pointer">
+              <input
+                type="radio"
+                name="language"
+                value={code}
+                className="sr-only"
+                defaultChecked={parseLanguage(s.language, 'en') === code}
+              />
+              <span className="settings-option">{LANGUAGE_LABELS[code]}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="form-section">
+        <p className="form-field__label">{t('settings.currency')}</p>
+        <div className="form-field"><label className="form-field__label">{t('settings.selectCurrency')}</label>
           <select className="md-select" name="currency_code" defaultValue={s.currencyCode}>{CURRENCY_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select>
         </div>
         <div className="settings-pill-track">
-          <label className="cursor-pointer"><input type="radio" name="currency_position" value="before" className="sr-only" defaultChecked={s.currencyPosition === 'before'} /><span className="settings-option">Before</span></label>
-          <label className="cursor-pointer"><input type="radio" name="currency_position" value="after" className="sr-only" defaultChecked={s.currencyPosition === 'after'} /><span className="settings-option">After</span></label>
+          <label className="cursor-pointer"><input type="radio" name="currency_position" value="before" className="sr-only" defaultChecked={s.currencyPosition === 'before'} /><span className="settings-option">{t('settings.before')}</span></label>
+          <label className="cursor-pointer"><input type="radio" name="currency_position" value="after" className="sr-only" defaultChecked={s.currencyPosition === 'after'} /><span className="settings-option">{t('settings.after')}</span></label>
         </div>
       </div>
       <div className="form-section">
-        <p className="form-field__label">Appearance</p>
+        <p className="form-field__label">{t('settings.appearance')}</p>
         <div className="settings-pill-track">
-          <label className="cursor-pointer"><input type="radio" name="app_mode" value="daily" className="sr-only" defaultChecked={s.appMode === 'daily'} /><span className="settings-option">Daily</span></label>
-          <label className="cursor-pointer"><input type="radio" name="app_mode" value="monthly" className="sr-only" defaultChecked={s.appMode === 'monthly'} /><span className="settings-option">Monthly</span></label>
+          <label className="cursor-pointer"><input type="radio" name="app_mode" value="daily" className="sr-only" defaultChecked={s.appMode === 'daily'} /><span className="settings-option">{t('settings.daily')}</span></label>
+          <label className="cursor-pointer"><input type="radio" name="app_mode" value="monthly" className="sr-only" defaultChecked={s.appMode === 'monthly'} /><span className="settings-option">{t('settings.monthly')}</span></label>
         </div>
         <div className="settings-pill-track mt-3">
-          <label className="cursor-pointer"><input type="radio" name="theme" value="light" className="sr-only" defaultChecked={s.theme !== 'dark'} /><span className="settings-option">Light</span></label>
-          <label className="cursor-pointer"><input type="radio" name="theme" value="dark" className="sr-only" defaultChecked={s.theme === 'dark'} /><span className="settings-option">Dark</span></label>
+          <label className="cursor-pointer"><input type="radio" name="theme" value="light" className="sr-only" defaultChecked={s.theme !== 'dark'} /><span className="settings-option">{t('settings.light')}</span></label>
+          <label className="cursor-pointer"><input type="radio" name="theme" value="dark" className="sr-only" defaultChecked={s.theme === 'dark'} /><span className="settings-option">{t('settings.dark')}</span></label>
         </div>
       </div>
       <div className="form-section form-section--soft">
         <div className="form-toggle-row">
-          <div className="form-toggle-row__text"><p className="form-toggle-row__title">Zero-based budget badge</p></div>
+          <div className="form-toggle-row__text"><p className="form-toggle-row__title">{t('settings.zeroBadge')}</p></div>
           <label className="md-toggle"><input type="checkbox" name="show_zero_balance_badge" className="md-toggle-input" defaultChecked={s.showZeroBalanceBadge} /><div className="md-toggle-track"><div className="md-toggle-thumb" /></div></label>
         </div>
       </div>
@@ -1357,6 +1393,7 @@ function TransferForm({
   onSubmit: (b: unknown) => void;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [amount, setAmount] = useState('');
   const [fromId, setFromId] = useState(data.default_account_id || data.accounts[0]?.id || 0);
   const [toId, setToId] = useState(data.accounts.find((a) => a.id !== (data.default_account_id || data.accounts[0]?.id))?.id || data.accounts[1]?.id || 0);
@@ -1372,38 +1409,38 @@ function TransferForm({
       }}
     >
       <div className="form-sheet__head">
-        <h2 className="form-sheet__title">Transfer</h2>
-        <p className="form-sheet__sub">Move money between wallets</p>
+        <h2 className="form-sheet__title">{t('form.transfer')}</h2>
+        <p className="form-sheet__sub">{t('form.transferSub')}</p>
       </div>
       <div className="form-section">
         <div className="form-field form-field--amount">
-          <label className="form-field__label">Amount</label>
+          <label className="form-field__label">{t('form.amount')}</label>
           <input className="md-input" type="number" step="0.01" min="0" required value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
         <div className="form-field">
-          <label className="form-field__label">From</label>
+          <label className="form-field__label">{t('form.from')}</label>
           <select className="md-select" value={fromId} onChange={(e) => setFromId(Number(e.target.value))} required>
             {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
         <div className="form-field">
-          <label className="form-field__label">To</label>
+          <label className="form-field__label">{t('form.to')}</label>
           <select className="md-select" value={toId} onChange={(e) => setToId(Number(e.target.value))} required>
             {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </div>
         <div className="form-field">
-          <label className="form-field__label">Date &amp; time</label>
+          <label className="form-field__label">{t('form.dateTime')}</label>
           <input className="md-input" type="datetime-local" required value={dt} onChange={(e) => setDt(e.target.value)} />
         </div>
         <div className="form-field">
-          <label className="form-field__label">Memo</label>
-          <input className="md-input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="Optional" />
+          <label className="form-field__label">{t('form.memo')}</label>
+          <input className="md-input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder={t('form.memoOptional')} />
         </div>
       </div>
       <div className="form-actions">
         <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
-        <button type="submit" className="btn-primary">Transfer</button>
+        <button type="submit" className="btn-primary">{t('form.transfer')}</button>
       </div>
     </form>
   );
@@ -1422,17 +1459,21 @@ function RecurringForm({
   onDelete: (id: number) => void;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [frequency, setFrequency] = useState('monthly');
   const [accountId, setAccountId] = useState(data.default_account_id || data.accounts[0]?.id || 0);
 
+  const freqLabel = (f: string) =>
+    f === 'daily' ? t('form.freqDaily') : f === 'weekly' ? t('form.freqWeekly') : t('form.freqMonthly');
+
   return (
     <div className="form-sheet">
       <div className="form-sheet__head">
-        <h2 className="form-sheet__title">Recurring</h2>
-        <p className="form-sheet__sub">Auto-create entries on a schedule</p>
+        <h2 className="form-sheet__title">{t('form.recurring')}</h2>
+        <p className="form-sheet__sub">{t('form.recurringSub')}</p>
       </div>
       {(data.recurring_rules?.length ?? 0) > 0 && (
         <div className="form-section space-y-2">
@@ -1440,12 +1481,12 @@ function RecurringForm({
             <div key={r.id} className="recurring-row">
               <div className="flex-1 min-w-0">
                 <p className="font-medium truncate">{r.category_name}</p>
-                <p className="text-xs text-md-on-surface-variant">{r.frequency} · {r.account_name} · {r.is_active ? 'On' : 'Paused'}</p>
+                <p className="text-xs text-md-on-surface-variant">{freqLabel(r.frequency)} · {r.account_name} · {r.is_active ? t('form.on') : t('form.paused')}</p>
               </div>
               <button type="button" className="section-icon-btn" onClick={() => onToggle(r.id, !r.is_active)} aria-label="Toggle">
                 <span className="material-icons-round">{r.is_active ? 'pause' : 'play_arrow'}</span>
               </button>
-              <button type="button" className="section-icon-btn" onClick={() => onDelete(r.id)} aria-label="Delete">
+              <button type="button" className="section-icon-btn" onClick={() => onDelete(r.id)} aria-label={t('common.delete')}>
                 <span className="material-icons-round">delete</span>
               </button>
             </div>
@@ -1468,25 +1509,25 @@ function RecurringForm({
           setCategory('');
         }}
       >
-        <p className="form-field__label mb-2">Add rule</p>
+        <p className="form-field__label mb-2">{t('form.addRule')}</p>
         <div className="add-type-tabs mb-3">
-          <button type="button" className={`add-type-tab ${type === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setType('expense')}>Expense</button>
-          <button type="button" className={`add-type-tab ${type === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setType('income')}>Income</button>
+          <button type="button" className={`add-type-tab ${type === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setType('expense')}>{t('home.expense')}</button>
+          <button type="button" className={`add-type-tab ${type === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setType('income')}>{t('home.income')}</button>
         </div>
-        <div className="form-field form-field--amount"><label className="form-field__label">Amount</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-        <div className="form-field"><label className="form-field__label">Name</label><input className="md-input" required value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Rent, Salary…" /></div>
+        <div className="form-field form-field--amount"><label className="form-field__label">{t('form.amount')}</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.name')}</label><input className="md-input" required value={category} onChange={(e) => setCategory(e.target.value)} placeholder={t('form.namePlaceholder')} /></div>
         <AccountSelect data={data} value={accountId} onChange={setAccountId} />
         <div className="form-field">
-          <label className="form-field__label">Frequency</label>
+          <label className="form-field__label">{t('form.frequency')}</label>
           <select className="md-select" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
+            <option value="daily">{t('form.freqDaily')}</option>
+            <option value="weekly">{t('form.freqWeekly')}</option>
+            <option value="monthly">{t('form.freqMonthly')}</option>
           </select>
         </div>
         <div className="form-actions mt-3">
           <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
-          <button type="submit" className="btn-primary">Save rule</button>
+          <button type="submit" className="btn-primary">{t('form.saveRule')}</button>
         </div>
       </form>
     </div>
@@ -1504,6 +1545,7 @@ function TemplatesForm({
   onDelete: (id: number) => void;
   onClose: () => void;
 }) {
+  const { t } = useT();
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
@@ -1513,14 +1555,14 @@ function TemplatesForm({
   return (
     <div className="form-sheet">
       <div className="form-sheet__head">
-        <h2 className="form-sheet__title">Quick templates</h2>
-        <p className="form-sheet__sub">Tap on Home to add instantly</p>
+        <h2 className="form-sheet__title">{t('form.templates')}</h2>
+        <p className="form-sheet__sub">{t('form.templatesSub')}</p>
       </div>
       {(data.quick_templates?.length ?? 0) > 0 && (
         <div className="form-section flex flex-wrap gap-2">
-          {(data.quick_templates ?? []).map((t) => (
-            <button key={t.id} type="button" className="template-chip template-chip--manage" onClick={() => onDelete(t.id)}>
-              <span>{t.label}</span>
+          {(data.quick_templates ?? []).map((tpl) => (
+            <button key={tpl.id} type="button" className="template-chip template-chip--manage" onClick={() => onDelete(tpl.id)}>
+              <span>{tpl.label}</span>
               <span className="material-icons-round text-sm">close</span>
             </button>
           ))}
@@ -1542,18 +1584,18 @@ function TemplatesForm({
           setCategory('');
         }}
       >
-        <p className="form-field__label mb-2">New template</p>
+        <p className="form-field__label mb-2">{t('form.newTemplate')}</p>
         <div className="add-type-tabs mb-3">
-          <button type="button" className={`add-type-tab ${type === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setType('expense')}>Expense</button>
-          <button type="button" className={`add-type-tab ${type === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setType('income')}>Income</button>
+          <button type="button" className={`add-type-tab ${type === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setType('expense')}>{t('home.expense')}</button>
+          <button type="button" className={`add-type-tab ${type === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setType('income')}>{t('home.income')}</button>
         </div>
-        <div className="form-field"><label className="form-field__label">Label</label><input className="md-input" required value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Tea, Petrol…" /></div>
-        <div className="form-field"><label className="form-field__label">Category</label><input className="md-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Same as label if empty" /></div>
-        <div className="form-field form-field--amount"><label className="form-field__label">Default amount</label><input className="md-input" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.label')}</label><input className="md-input" required value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('form.labelPlaceholder')} /></div>
+        <div className="form-field"><label className="form-field__label">{t('form.category')}</label><input className="md-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder={t('form.categoryPlaceholder')} /></div>
+        <div className="form-field form-field--amount"><label className="form-field__label">{t('form.defaultAmount')}</label><input className="md-input" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
         <AccountSelect data={data} value={accountId} onChange={setAccountId} />
         <div className="form-actions mt-3">
           <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
-          <button type="submit" className="btn-primary">Save template</button>
+          <button type="submit" className="btn-primary">{t('form.saveTemplate')}</button>
         </div>
       </form>
     </div>

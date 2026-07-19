@@ -1,3 +1,12 @@
+import {
+  fullMonthName,
+  shortDayName,
+  shortMonthName,
+  t,
+  type Language,
+} from '@/lib/i18n';
+import { parseLanguage } from '@/lib/i18n/types';
+
 export function localDate(value: Date | string | null | undefined): Date | null {
   if (!value) return null;
   const d = typeof value === 'string' ? new Date(value) : value;
@@ -45,35 +54,36 @@ export function toDatetimeLocalValue(d: Date): string {
   return `${y}-${m}-${day}T${hh}:${mm}`;
 }
 
-export function formatTxnTime(value: Date | string): string {
+function asLang(lang?: string | Language | null): Language {
+  return parseLanguage(lang, 'en');
+}
+
+export function formatTxnTime(value: Date | string, lang?: string | Language | null): string {
   const d = typeof value === 'string' ? new Date(value) : value;
+  const L = asLang(lang);
   let h = d.getHours();
   const m = d.getMinutes();
-  const ampm = h >= 12 ? 'PM' : 'AM';
+  const ampm = h >= 12 ? t(L, 'date.pm') : t(L, 'date.am');
   h = h % 12;
   if (h === 0) h = 12;
   return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-export function shortDateLabel(day: Date | string): string {
+export function shortDateLabel(day: Date | string, lang?: string | Language | null): string {
   const d = typeof day === 'string' ? parseIsoDate(day) : day;
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const L = asLang(lang);
   const yy = String(d.getFullYear()).slice(-2);
-  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} '${yy}`;
+  return `${shortDayName(L, d.getDay())}, ${d.getDate()} ${shortMonthName(L, d.getMonth())} '${yy}`;
 }
 
-export function monthLabel(year: number, month: number): string {
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-  return `${months[month - 1]} ${year}`;
+export function monthLabel(year: number, month: number, lang?: string | Language | null): string {
+  const L = asLang(lang);
+  return `${fullMonthName(L, month - 1)} ${year}`;
 }
 
-export function shortMonthLabel(year: number, month: number): string {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[month - 1]} ${year}`;
+export function shortMonthLabel(year: number, month: number, lang?: string | Language | null): string {
+  const L = asLang(lang);
+  return `${shortMonthName(L, month - 1)} ${year}`;
 }
 
 export function startOfMonth(year: number, month: number): Date {

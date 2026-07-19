@@ -9,7 +9,7 @@ export async function loadSettings(userId: string) {
         userId,
         currencyCode: 'INR',
         currencySymbol: '₹',
-        theme: 'dark',
+        theme: 'light',
       },
     });
   }
@@ -49,7 +49,7 @@ export async function updateSettings(
       currencyCode: currencyCode ?? 'INR',
       currencySymbol: config?.symbol ?? '₹',
       currencyPosition: data.currencyPosition ?? config?.position ?? 'before',
-      theme: data.theme ?? 'dark',
+      theme: data.theme ?? 'light',
       appMode: data.appMode ?? 'daily',
       showZeroBalanceBadge: data.showZeroBalanceBadge ?? true,
     },

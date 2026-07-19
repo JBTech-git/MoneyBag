@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
@@ -10,8 +11,9 @@ import {
   serializeAccess,
   subscriptionEndsAtFromNow,
   trialEndsAtFromNow,
-  TRIAL_DAYS,
 } from './subscription';
+import { getSiteConfig } from './siteConfig';
+import { isEmailSuperAdmin, isSuperAdmin, syncSuperAdminFlag } from './adminAccess';
 
 const COOKIE_NAME = 'moneybag_session';
 const SESSION_DAYS = 30;
@@ -30,6 +32,7 @@ export type SessionUser = {
   id: string;
   email: string;
   name: string;
+  isAdmin?: boolean;
 };
 
 export type AuthPayload = SessionUser & {
@@ -41,6 +44,7 @@ function sanitizeUser(user: User): SessionUser {
     id: user.id,
     email: user.email,
     name: user.name,
+    isAdmin: Boolean(user.isAdmin) || isEmailSuperAdmin(user.email),
   };
 }
 
@@ -53,7 +57,7 @@ function isValidEmail(email: string) {
 }
 
 function generateVerificationCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(randomInt(100000, 1000000));
 }
 
 export async function hashVerificationCode(code: string) {
@@ -113,7 +117,10 @@ export async function readSessionToken() {
 export async function getCurrentUser() {
   const session = await readSessionToken();
   if (!session) return null;
-  return prisma.user.findUnique({ where: { id: session.id } });
+  const user = await prisma.user.findUnique({ where: { id: session.id } });
+  if (!user) return null;
+  if (user.disabledAt) return null;
+  return syncSuperAdminFlag(user);
 }
 
 export async function getAuthPayload(): Promise<AuthPayload | null> {
@@ -135,6 +142,9 @@ export async function requireUser() {
 
 export async function requireManageAccess() {
   const user = await requireUser();
+  if (isSuperAdmin(user)) {
+    return user;
+  }
   const access = getAccessState(user);
   if (!access.hasAccess) {
     throw new AuthError('Trial expired. Subscribe to continue.', 402);
@@ -160,21 +170,29 @@ export function authErrorResponse(err: unknown) {
 
 async function findOrCreateUser(email: string) {
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return { user: existing, isNew: false };
+  if (existing) {
+    if (existing.disabledAt) {
+      throw new AuthError('This account has been disabled. Contact support.', 403);
+    }
+    const synced = await syncSuperAdminFlag(existing);
+    return { user: synced, isNew: false };
+  }
 
-  const trialEndsAt = trialEndsAtFromNow(TRIAL_DAYS);
+  const site = await getSiteConfig();
+  const trialEndsAt = trialEndsAtFromNow(site.trialDays);
   const user = await prisma.user.create({
     data: {
       email,
       passwordHash: null,
       name: email.split('@')[0] || 'User',
+      isAdmin: isEmailSuperAdmin(email),
       trialEndsAt,
       subscriptionStatus: 'trial',
       settings: {
         create: {
           currencyCode: 'INR',
           currencySymbol: '₹',
-          theme: 'dark',
+          theme: 'light',
         },
       },
       accounts: {
@@ -182,7 +200,7 @@ async function findOrCreateUser(email: string) {
           name: 'Cash',
           accountType: 'cash',
           isDefault: true,
-          color: '#1E3A8A',
+          color: '#0F766E',
         },
       },
     },
@@ -247,7 +265,8 @@ export async function verifyEmailCode(rawEmail: string, rawCode: string) {
 }
 
 export async function activateSubscription(userId: string) {
-  const subscriptionEndsAt = subscriptionEndsAtFromNow();
+  const site = await getSiteConfig();
+  const subscriptionEndsAt = subscriptionEndsAtFromNow(site.subscriptionDays);
   return prisma.user.update({
     where: { id: userId },
     data: {
@@ -257,6 +276,7 @@ export async function activateSubscription(userId: string) {
   });
 }
 
-export function isDemoSubscriptionAllowed() {
-  return process.env.ALLOW_DEMO_SUBSCRIPTION === 'true';
+export async function isDemoSubscriptionAllowed() {
+  const site = await getSiteConfig();
+  return site.allowDemoSubscription;
 }

@@ -1,20 +1,35 @@
 import type { User } from '@prisma/client';
+import { isSuperAdmin } from './adminAccess';
+import { getSiteConfig } from './siteConfig';
 
-export const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 2);
-export const SUBSCRIPTION_DAYS = Number(process.env.SUBSCRIPTION_DAYS || 30);
-export const SUBSCRIPTION_PRICE_LABEL =
-  process.env.SUBSCRIPTION_PRICE_LABEL?.trim() || '₹99/month';
+/** Built-in fallbacks only — runtime values come from Super Admin (site_config). */
+export const TRIAL_DAYS = 30;
+export const SUBSCRIPTION_DAYS = 30;
+export const SUBSCRIPTION_PRICE_LABEL = '₹99/month';
 
-export function getSubscriptionConfig() {
+export async function getSubscriptionConfig() {
+  const site = await getSiteConfig();
+  const qrSrc = site.phonepeQrData || site.phonepeQrImage || '/payments/phonepe-qr.svg';
+
   return {
-    trialDays: TRIAL_DAYS,
-    subscriptionDays: SUBSCRIPTION_DAYS,
-    priceLabel: SUBSCRIPTION_PRICE_LABEL,
-    demoAllowed: process.env.ALLOW_DEMO_SUBSCRIPTION === 'true',
+    trialDays: site.trialDays,
+    subscriptionDays: site.subscriptionDays,
+    priceLabel: site.priceLabel,
+    demoAllowed: site.allowDemoSubscription,
     supportEmail:
       process.env.SUPPORT_EMAIL?.trim() ||
       process.env.EMAIL_REPLY_TO?.trim() ||
       'info.mnybag@gmail.com',
+    phonepe: {
+      enabled: site.phonepeEnabled,
+      qrImage: qrSrc,
+      upiId: site.phonepeUpiId,
+      autoActivate: site.paymentAutoActivate,
+      instructions:
+        site.phonepeInstructions ||
+        'Scan this PhonePe QR, pay the subscription amount, then enter your UTR / UPI reference and tap I’ve paid.',
+    },
+    appUrl: site.appUrl,
   };
 }
 
@@ -41,11 +56,23 @@ export function subscriptionEndsAtFromNow(days = SUBSCRIPTION_DAYS) {
 
 export function getAccessState(user: Pick<
   User,
-  'trialEndsAt' | 'subscriptionStatus' | 'subscriptionEndsAt'
->): AccessState {
+  'trialEndsAt' | 'subscriptionStatus' | 'subscriptionEndsAt' | 'email' | 'isAdmin'
+>, subscriptionDaysFallback = SUBSCRIPTION_DAYS): AccessState {
   const now = Date.now();
   const trialEndsAt = user.trialEndsAt.toISOString();
   const subscriptionEndsAt = user.subscriptionEndsAt?.toISOString() ?? null;
+
+  // Super admins never need a subscription
+  if (isSuperAdmin(user)) {
+    return {
+      hasAccess: true,
+      status: 'active',
+      trialEndsAt,
+      subscriptionEndsAt,
+      daysLeft: 9999,
+      hoursLeft: 9999 * 24,
+    };
+  }
 
   if (
     user.subscriptionStatus === 'active' &&
@@ -53,7 +80,7 @@ export function getAccessState(user: Pick<
   ) {
     const msLeft = user.subscriptionEndsAt
       ? user.subscriptionEndsAt.getTime() - now
-      : SUBSCRIPTION_DAYS * 24 * 60 * 60 * 1000;
+      : subscriptionDaysFallback * 24 * 60 * 60 * 1000;
     return {
       hasAccess: true,
       status: 'active',
@@ -88,7 +115,7 @@ export function getAccessState(user: Pick<
 
 export function serializeAccess(user: Pick<
   User,
-  'trialEndsAt' | 'subscriptionStatus' | 'subscriptionEndsAt'
+  'trialEndsAt' | 'subscriptionStatus' | 'subscriptionEndsAt' | 'email' | 'isAdmin'
 >) {
   return getAccessState(user);
 }

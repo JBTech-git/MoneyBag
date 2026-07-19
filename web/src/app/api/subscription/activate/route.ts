@@ -14,10 +14,10 @@ export async function POST() {
   try {
     const user = await requireUser();
 
-    if (!isDemoSubscriptionAllowed()) {
+    if (!(await isDemoSubscriptionAllowed())) {
       return NextResponse.json(
         {
-          error: 'Payment is not configured yet. Set ALLOW_DEMO_SUBSCRIPTION=true for testing.',
+          error: 'Demo subscribe is disabled. Pay with PhonePe or contact support.',
           code: 'payment_not_configured',
         },
         { status: 503 },

@@ -20,11 +20,20 @@ export function verificationExpiresAt() {
   return expires;
 }
 
+export function canExposeDevCode() {
+  // Never expose OTP in production responses — even if SHOW_DEV_CODE is set by mistake.
+  if (process.env.NODE_ENV === 'production') return false;
+  return process.env.SHOW_DEV_CODE === 'true' || process.env.EMAIL_CODE_FALLBACK === 'true';
+}
+
 export function devVerificationEnabled() {
-  return process.env.NODE_ENV === 'development' || process.env.SHOW_DEV_CODE === 'true';
+  // Skip real email only in local/dev when explicitly enabled.
+  if (process.env.NODE_ENV === 'production') return false;
+  return process.env.SHOW_DEV_CODE === 'true';
 }
 
 export function emailCodeFallbackEnabled() {
+  if (process.env.NODE_ENV === 'production') return false;
   return process.env.EMAIL_CODE_FALLBACK === 'true';
 }
 
@@ -81,7 +90,14 @@ function verificationEmailHtml(code: string) {
 
 function fallbackDelivery(email: string, code: string, reason: string) {
   console.warn(`[Moneybag] Email fallback for ${email}: ${reason}`);
-  return { sent: false as const, devCode: code, emailFallback: true as const };
+  if (canExposeDevCode() || emailCodeFallbackEnabled()) {
+    return { sent: false as const, devCode: code, emailFallback: true as const };
+  }
+  return {
+    sent: false as const,
+    emailFallback: false as const,
+    error: 'Could not send verification email. Check SMTP/Resend configuration.',
+  };
 }
 
 async function sendViaSmtp(email: string, code: string) {
@@ -141,6 +157,126 @@ async function sendViaResend(email: string, code: string) {
   }
 
   return { sent: true as const };
+}
+
+async function sendHtmlEmail(to: string | string[], subject: string, html: string) {
+  const recipients = Array.isArray(to) ? to : [to];
+  if (!recipients.length) return { sent: false as const, reason: 'no recipients' };
+
+  if (devVerificationEnabled()) {
+    console.log(`[Moneybag] Email to ${recipients.join(', ')}: ${subject}`);
+    console.log(html.replace(/<[^>]+>/g, ' ').slice(0, 500));
+    return { sent: true as const, dev: true as const };
+  }
+
+  if (smtpConfigured()) {
+    const host = process.env.SMTP_HOST!.trim();
+    const port = Number(process.env.SMTP_PORT?.trim() || '587');
+    const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+    const user = process.env.SMTP_USER!.trim();
+    const pass = process.env.SMTP_PASS!.trim();
+    const transport = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: { user, pass },
+    });
+    await transport.sendMail({
+      from: resolveSmtpFromAddress(),
+      replyTo: supportEmail(),
+      to: recipients,
+      subject,
+      html,
+    });
+    return { sent: true as const };
+  }
+
+  if (process.env.RESEND_API_KEY?.trim()) {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: resolveResendFromAddress(),
+        reply_to: supportEmail(),
+        to: recipients,
+        subject,
+        html,
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return { sent: true as const };
+  }
+
+  console.warn('[Moneybag] No email provider for admin notify');
+  return { sent: false as const, reason: 'no provider' };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export async function notifySuperAdminsPayment(opts: {
+  userEmail: string;
+  userName: string;
+  amountLabel: string;
+  utr: string;
+  note: string;
+  hasProof?: boolean;
+  autoActivated: boolean;
+  adminUrl: string;
+}) {
+  const { superAdminEmails } = await import('./adminAccess');
+  const admins = superAdminEmails();
+  const to = admins.length ? admins : [supportEmail()];
+  const subject = opts.autoActivated
+    ? `[Moneybag] Payment claimed & activated — ${opts.userEmail}`
+    : `[Moneybag] Payment claim pending review — ${opts.userEmail}`;
+
+  const name = escapeHtml(opts.userName || opts.userEmail);
+  const email = escapeHtml(opts.userEmail);
+  const amount = escapeHtml(opts.amountLabel || '—');
+  const utr = escapeHtml(opts.utr || '—');
+  const note = escapeHtml(opts.note || '—');
+  const adminUrl = escapeHtml(opts.adminUrl);
+  const proof = opts.hasProof ? 'Yes (view in Super Admin)' : 'No';
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px">
+      <h2 style="margin:0 0 12px;color:#0F766E">Moneybag payment</h2>
+      <p style="color:#374151;line-height:1.5">
+        <strong>${name}</strong> (${email}) submitted a PhonePe payment claim.
+      </p>
+      <ul style="color:#111827;line-height:1.7">
+        <li><strong>Amount:</strong> ${amount}</li>
+        <li><strong>UTR / Ref:</strong> ${utr}</li>
+        <li><strong>Note:</strong> ${note}</li>
+        <li><strong>Proof screenshot:</strong> ${proof}</li>
+        <li><strong>Status:</strong> ${opts.autoActivated ? 'Auto-activated' : 'Pending review — Approve or Reject in Super Admin'}</li>
+      </ul>
+      <p style="margin-top:16px">
+        <a href="${adminUrl}" style="display:inline-block;background:#0F766E;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600">
+          Open Super Admin
+        </a>
+      </p>
+      <p style="color:#6b7280;font-size:12px;margin-top:16px">
+        Use Approve to activate, or Reject to deny (and revoke if already activated).
+      </p>
+    </div>
+  `;
+
+  try {
+    return await sendHtmlEmail(to, subject, html);
+  } catch (err) {
+    console.error('[Moneybag] Admin payment notify failed:', err);
+    return { sent: false as const, reason: String(err) };
+  }
 }
 
 export async function sendVerificationEmail(email: string, code: string) {

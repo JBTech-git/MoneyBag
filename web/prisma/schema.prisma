@@ -12,6 +12,8 @@ model User {
   email              String    @unique
   passwordHash       String?   @map("password_hash")
   name               String    @default("")
+  isAdmin            Boolean   @default(false) @map("is_admin")
+  disabledAt         DateTime? @map("disabled_at")
   trialStartedAt     DateTime  @default(now()) @map("trial_started_at")
   trialEndsAt        DateTime  @map("trial_ends_at")
   subscriptionStatus String    @default("trial") @map("subscription_status")
@@ -19,11 +21,14 @@ model User {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  settings     AppSettings?
-  accounts     Account[]
-  incomes      Income[]
-  expenses     Expense[]
-  transactions Transaction[]
+  settings      AppSettings?
+  accounts      Account[]
+  incomes       Income[]
+  expenses      Expense[]
+  transactions  Transaction[]
+  recurringRules RecurringRule[]
+  quickTemplates QuickTemplate[]
+  paymentClaims  PaymentClaim[]
 
   @@map("users")
 }
@@ -54,7 +59,10 @@ model Account {
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   incomes        Income[]
   expenses       Expense[]
-  transactions   Transaction[]
+  transactions   Transaction[] @relation("TxnFromAccount")
+  transfersIn    Transaction[] @relation("TxnToAccount")
+  recurringRules RecurringRule[]
+  quickTemplates QuickTemplate[]
 
   @@index([userId])
   @@map("accounts")
@@ -71,7 +79,7 @@ model Income {
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account      Account       @relation(fields: [accountId], references: [id])
+  account         Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
   @@index([userId])
@@ -92,7 +100,7 @@ model Expense {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account         Account       @relation(fields: [accountId], references: [id])
+  account         Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions    Transaction[]
 
   @@index([userId])
@@ -109,6 +117,7 @@ model Transaction {
   amount          Decimal
   memo            String   @default("")
   accountId       Int      @map("account_id")
+  toAccountId     Int?     @map("to_account_id")
   transactionDate DateTime @map("transaction_date")
   linkedIncomeId  Int?     @map("linked_income_id")
   linkedExpenseId Int?     @map("linked_expense_id")
@@ -116,14 +125,78 @@ model Transaction {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account         Account  @relation(fields: [accountId], references: [id])
+  account         Account  @relation("TxnFromAccount", fields: [accountId], references: [id], onDelete: Cascade)
+  toAccount       Account? @relation("TxnToAccount", fields: [toAccountId], references: [id], onDelete: SetNull)
   linkedIncome    Income?  @relation(fields: [linkedIncomeId], references: [id], onDelete: SetNull)
   linkedExpense   Expense? @relation(fields: [linkedExpenseId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([transactionDate])
   @@index([transactionType])
+  @@index([toAccountId])
   @@map("transactions")
+}
+
+model RecurringRule {
+  id              Int       @id @default(autoincrement())
+  userId          String    @map("user_id")
+  transactionType String    @map("transaction_type")
+  categoryName    String    @map("category_name")
+  amount          Decimal
+  memo            String    @default("")
+  accountId       Int       @map("account_id")
+  toAccountId     Int?      @map("to_account_id")
+  frequency       String    @default("monthly")
+  nextRunAt       DateTime  @map("next_run_at")
+  lastRunAt       DateTime? @map("last_run_at")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account         Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([nextRunAt])
+  @@map("recurring_rules")
+}
+
+model QuickTemplate {
+  id              Int      @id @default(autoincrement())
+  userId          String   @map("user_id")
+  label           String
+  transactionType String   @map("transaction_type")
+  categoryName    String   @map("category_name")
+  amount          Decimal  @default(0)
+  memo            String   @default("")
+  accountId       Int?     @map("account_id")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account         Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("quick_templates")
+}
+
+model PaymentClaim {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  amountLabel  String    @default("") @map("amount_label")
+  utr          String    @default("")
+  note         String    @default("")
+  proofData    String    @default("") @map("proof_data")
+  status       String    @default("pending")
+  reviewNote   String    @default("") @map("review_note")
+  reviewedAt   DateTime? @map("reviewed_at")
+  reviewedById String?   @map("reviewed_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+  @@map("payment_claims")
 }
 
 model AppSettings {
@@ -133,11 +206,30 @@ model AppSettings {
   currencyCode         String   @default("INR") @map("currency_code")
   currencySymbol       String   @default("₹") @map("currency_symbol")
   currencyPosition     String   @default("before") @map("currency_position")
-  theme                String   @default("dark")
+  theme                String   @default("light")
   appMode              String   @default("daily") @map("app_mode")
   showZeroBalanceBadge Boolean  @default(true) @map("show_zero_balance_badge")
   updatedAt            DateTime @updatedAt @map("updated_at")
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("app_settings")
+}
+
+// Singleton platform settings (id = 1). Super admin edits from /admin.
+model SiteConfig {
+  id                    Int      @id @default(1)
+  trialDays             Int      @default(30) @map("trial_days")
+  subscriptionDays      Int      @default(30) @map("subscription_days")
+  priceLabel            String   @default("₹99/month") @map("price_label")
+  allowDemoSubscription Boolean  @default(false) @map("allow_demo_subscription")
+  phonepeEnabled        Boolean  @default(true) @map("phonepe_enabled")
+  phonepeUpiId          String   @default("") @map("phonepe_upi_id")
+  phonepeQrImage        String   @default("/payments/phonepe-qr.svg") @map("phonepe_qr_image")
+  phonepeQrData         String   @default("") @map("phonepe_qr_data")
+  paymentAutoActivate   Boolean  @default(false) @map("payment_auto_activate")
+  phonepeInstructions   String   @default("") @map("phonepe_instructions")
+  appUrl                String   @default("") @map("app_url")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("site_config")
 }

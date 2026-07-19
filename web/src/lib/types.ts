@@ -49,6 +49,40 @@ export type BootstrapData = {
   calendar_days: CalendarDay[];
   expense_suggestions: string[];
   income_suggestions: string[];
+  insights?: {
+    top_categories: Array<{
+      name: string;
+      amount: number;
+      pct: number;
+      style: { icon: string; color: string };
+    }>;
+    week_spent: number;
+    month_spent: number;
+    budget_used_pct: number;
+  };
+  quick_templates?: Array<{
+    id: number;
+    label: string;
+    transaction_type: string;
+    category_name: string;
+    amount: number;
+    memo: string;
+    account_id: number | null;
+  }>;
+  recurring_rules?: Array<{
+    id: number;
+    transaction_type: string;
+    category_name: string;
+    amount: number;
+    memo: string;
+    account_id: number;
+    account_name: string;
+    to_account_id: number | null;
+    frequency: string;
+    next_run_at: string;
+    last_run_at: string | null;
+    is_active: boolean;
+  }>;
   counts: {
     accounts: number;
     transactions: number;

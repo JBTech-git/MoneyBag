@@ -18,6 +18,7 @@ import type { LedgerDaySection, LedgerEntry, LedgerMonth } from './types';
 import { toNum } from './money';
 import { formatMoneyWith, loadSettings } from './settings';
 import { batchExpenseReceivedTotals, batchIncomeReceivedTotals } from './sync';
+import { processDueRecurring, serializeRecurring } from './recurring';
 
 export async function ensureDefaultAccount(userId: string) {
   const count = await prisma.account.count({ where: { userId } });
@@ -53,17 +54,36 @@ async function batchComputeAccountBalances(
     _sum: { amount: true },
   });
 
-  const totals = new Map<number, { income: number; expense: number }>();
+  const transferIns = await prisma.transaction.groupBy({
+    by: ['toAccountId'],
+    where: {
+      toAccountId: { in: accountIds },
+      transactionType: 'transfer',
+    },
+    _sum: { amount: true },
+  });
+
+  const totals = new Map<number, { income: number; expense: number; transferOut: number }>();
   for (const row of rows) {
-    const bucket = totals.get(row.accountId) || { income: 0, expense: 0 };
+    const bucket = totals.get(row.accountId) || { income: 0, expense: 0, transferOut: 0 };
     if (row.transactionType === 'income') bucket.income = toNum(row._sum.amount);
     else if (row.transactionType === 'expense') bucket.expense = toNum(row._sum.amount);
+    else if (row.transactionType === 'transfer') bucket.transferOut = toNum(row._sum.amount);
     totals.set(row.accountId, bucket);
   }
 
+  const inMap = new Map<number, number>();
+  for (const row of transferIns) {
+    if (row.toAccountId != null) inMap.set(row.toAccountId, toNum(row._sum.amount));
+  }
+
   for (const a of accounts) {
-    const t = totals.get(a.id) || { income: 0, expense: 0 };
-    balances.set(a.id, toNum(a.initialBalance) + t.income - t.expense);
+    const t = totals.get(a.id) || { income: 0, expense: 0, transferOut: 0 };
+    const transferIn = inMap.get(a.id) || 0;
+    balances.set(
+      a.id,
+      toNum(a.initialBalance) + t.income - t.expense - t.transferOut + transferIn,
+    );
   }
   return balances;
 }
@@ -91,6 +111,7 @@ export type AppQuery = {
 export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
   const settings = await loadSettings(userId);
   await ensureDefaultAccount(userId);
+  await processDueRecurring(userId);
 
   const mode = query.mode || settings.appMode || 'daily';
   const today = new Date();
@@ -107,14 +128,20 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
   const monthEnd = endOfMonth(year, month);
   const dayStart = startOfDay(selectedDate);
   const dayEnd = endOfDay(selectedDate);
+  const weekStart = startOfDay(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6));
 
   const needsLedger = tab === 'ledger';
   const needsMonthTxs =
     needsLedger && mode !== 'monthly' && (txnView === 'daily' || txnView === 'calendar');
   const needsMonthlyAccordion = needsLedger && mode === 'daily' && txnView === 'monthly';
-  const needsAccountBalances = tab === 'accounts' || (needsLedger && txnView === 'daily' && filter === 'total');
-  const needsBudgetTotals = mode === 'monthly' || tab === 'ledger';
+  const needsAccountBalances =
+    tab === 'accounts' || tab === 'home' || (needsLedger && txnView === 'daily' && filter === 'total');
+  const needsBudgetTotals = mode === 'monthly' || tab === 'ledger' || tab === 'home';
   const needsDayMonthAggs = tab === 'home' && mode === 'daily';
+  const needsInsights = tab === 'home';
+  const needsTools = tab === 'home' || tab === 'more' || tab === 'ledger';
+
+  const txInclude = { account: true, toAccount: true } as const;
 
   const [
     accounts,
@@ -125,6 +152,9 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     monthTxs,
     dayAgg,
     monthAgg,
+    insightTxs,
+    templates,
+    recurringRules,
   ] = await Promise.all([
     prisma.account.findMany({
       where: { userId },
@@ -147,14 +177,14 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     }),
     prisma.transaction.findMany({
       where: { userId },
-      include: { account: true },
+      include: txInclude,
       orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
       take: 10,
     }),
     needsMonthTxs
       ? prisma.transaction.findMany({
           where: { userId, transactionDate: { gte: monthStart, lte: monthEnd } },
-          include: { account: true },
+          include: txInclude,
           orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
         })
       : Promise.resolve([]),
@@ -170,6 +200,31 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
           by: ['transactionType'],
           where: { userId, transactionDate: { gte: monthStart, lte: monthEnd } },
           _sum: { amount: true },
+        })
+      : Promise.resolve([]),
+    needsInsights
+      ? prisma.transaction.findMany({
+          where: {
+            userId,
+            transactionType: 'expense',
+            transactionDate: { gte: monthStart, lte: monthEnd },
+          },
+          select: { categoryName: true, amount: true, transactionDate: true },
+        })
+      : Promise.resolve([]),
+    needsTools
+      ? prisma.quickTemplate.findMany({
+          where: { userId },
+          orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          take: 20,
+        })
+      : Promise.resolve([]),
+    needsTools
+      ? prisma.recurringRule.findMany({
+          where: { userId },
+          include: { account: true },
+          orderBy: { nextRunAt: 'asc' },
+          take: 30,
         })
       : Promise.resolve([]),
   ]);
@@ -275,20 +330,70 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     };
   });
 
-  const recentActivity = recentTxs.map((t) => ({
-    source: 'daily' as const,
-    kind: t.transactionType,
-    pk: t.id,
-    title: t.categoryName,
-    subtitle: `${t.account.name} · ${formatTxnTime(t.transactionDate)}${
-      t.linkedExpenseId ? ' · Budget' : t.linkedIncomeId ? ' · Salary' : ''
-    }${t.memo ? ` · ${t.memo}` : ''}`,
+  const recentActivity = recentTxs.map((t) => {
+    if (t.transactionType === 'transfer') {
+      return {
+        source: 'daily' as const,
+        kind: 'transfer',
+        pk: t.id,
+        title: t.categoryName || 'Transfer',
+        subtitle: `${t.account.name} → ${t.toAccount?.name || 'Wallet'} · ${formatTxnTime(t.transactionDate)}`,
+        amount: toNum(t.amount),
+        style: { icon: 'swap_horiz', color: '#0F766E' },
+      };
+    }
+    return {
+      source: 'daily' as const,
+      kind: t.transactionType,
+      pk: t.id,
+      title: t.categoryName,
+      subtitle: `${t.account.name} · ${formatTxnTime(t.transactionDate)}${
+        t.linkedExpenseId ? ' · Budget' : t.linkedIncomeId ? ' · Salary' : ''
+      }${t.memo ? ` · ${t.memo}` : ''}`,
+      amount: toNum(t.amount),
+      style:
+        t.transactionType === 'income'
+          ? { icon: 'arrow_downward', color: '#0F766E' }
+          : categoryStyle(t.categoryName),
+    };
+  });
+
+  const categoryTotals = new Map<string, number>();
+  let weekSpent = 0;
+  for (const t of insightTxs) {
+    const amt = toNum(t.amount);
+    categoryTotals.set(t.categoryName, (categoryTotals.get(t.categoryName) || 0) + amt);
+    if (t.transactionDate >= weekStart) weekSpent += amt;
+  }
+  const monthExpenseTotal = Array.from(categoryTotals.values()).reduce((s, n) => s + n, 0);
+  const topCategories = Array.from(categoryTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, amount]) => ({
+      name,
+      amount,
+      pct: monthExpenseTotal ? Math.round((amount / monthExpenseTotal) * 100) : 0,
+      style: categoryStyle(name),
+    }));
+
+  const insights = {
+    top_categories: topCategories,
+    week_spent: weekSpent,
+    month_spent: monthExpenseTotal,
+    budget_used_pct: budgetSpentPct,
+  };
+
+  const quickTemplates = templates.map((t) => ({
+    id: t.id,
+    label: t.label,
+    transaction_type: t.transactionType,
+    category_name: t.categoryName,
     amount: toNum(t.amount),
-    style:
-      t.transactionType === 'income'
-        ? { icon: 'arrow_downward', color: '#059669' }
-        : categoryStyle(t.categoryName),
+    memo: t.memo,
+    account_id: t.accountId,
   }));
+
+  const recurring = recurringRules.map(serializeRecurring);
 
   const ledgerEntries = needsLedger
     ? buildLedgerEntries(monthTxs, incomes, expenses, filter, mode)
@@ -301,7 +406,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     const accordionStart = startOfMonth(oldest[0], oldest[1]);
     const accordionTxs = await prisma.transaction.findMany({
       where: { userId, transactionDate: { gte: accordionStart, lte: monthEnd } },
-      include: { account: true },
+      include: { account: true, toAccount: true },
       orderBy: [{ transactionDate: 'desc' }, { id: 'desc' }],
     });
     ledgerMonths = buildMonthlyAccordion(accordionTxs, year, month, filter);
@@ -374,6 +479,9 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     budget_income_rows: budgetIncomeRows,
     budget_expense_rows: budgetExpenseRows,
     recent_activity: recentActivity,
+    insights,
+    quick_templates: quickTemplates,
+    recurring_rules: recurring,
     ledger_entries: ledgerEntries,
     ledger_months: ledgerMonths,
     calendar_days: calendarDays,
@@ -415,6 +523,7 @@ function serializeAccount(a: {
 function passesLedgerFilter(transactionType: string, filter: string): boolean {
   if (filter === 'income') return transactionType === 'income';
   if (filter === 'expense') return transactionType === 'expense';
+  if (filter === 'transfer') return transactionType === 'transfer';
   if (filter === 'total') return false;
   return true;
 }
@@ -429,9 +538,23 @@ type TxRow = {
   linkedExpenseId: number | null;
   linkedIncomeId: number | null;
   account: { name: string };
+  toAccount?: { name: string } | null;
 };
 
 function mapTransactionToLedgerEntry(t: TxRow): LedgerEntry {
+  if (t.transactionType === 'transfer') {
+    const toName = t.toAccount?.name || 'Wallet';
+    return {
+      kind: 'transfer',
+      source: 'daily',
+      pk: t.id,
+      title: t.categoryName || 'Transfer',
+      subtitle: `${t.account.name} → ${toName} · ${formatTxnTime(t.transactionDate)}${t.memo ? ` · ${t.memo}` : ''}`,
+      amount: toNum(t.amount),
+      date: localDateIso(t.transactionDate),
+      style: { icon: 'swap_horiz', color: '#0F766E' },
+    };
+  }
   return {
     kind: t.transactionType,
     source: 'daily',
@@ -444,7 +567,7 @@ function mapTransactionToLedgerEntry(t: TxRow): LedgerEntry {
     date: localDateIso(t.transactionDate),
     style:
       t.transactionType === 'income'
-        ? { icon: 'arrow_downward', color: '#059669' }
+        ? { icon: 'arrow_downward', color: '#0F766E' }
         : categoryStyle(t.categoryName),
   };
 }
@@ -576,7 +699,7 @@ function buildCalendarDays(
     const iso = localDateIso(t.transactionDate);
     const bucket = totals.get(iso) || { income: 0, expense: 0 };
     if (t.transactionType === 'income') bucket.income += toNum(t.amount);
-    else bucket.expense += toNum(t.amount);
+    else if (t.transactionType === 'expense') bucket.expense += toNum(t.amount);
     totals.set(iso, bucket);
   }
 

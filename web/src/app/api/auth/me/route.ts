@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthPayload } from '@/lib/auth';
-import { TRIAL_DAYS } from '@/lib/subscription';
+import { getSiteConfig } from '@/lib/siteConfig';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,14 +10,16 @@ export async function GET() {
   if (!payload) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
+  const site = await getSiteConfig();
   return NextResponse.json({
     authenticated: true,
     user: {
       id: payload.id,
       email: payload.email,
       name: payload.name,
+      isAdmin: Boolean(payload.isAdmin),
     },
     access: payload.access,
-    trial_days: TRIAL_DAYS,
+    trial_days: site.trialDays,
   });
 }

@@ -12,11 +12,14 @@ import AuthScreen from '@/components/AuthScreen';
 import PaywallScreen from '@/components/PaywallScreen';
 import type { AccessState } from '@/lib/subscription';
 
-type SessionUser = { id: string; email: string; name: string };
+type SessionUser = { id: string; email: string; name: string; isAdmin?: boolean };
 
 type Sheet =
   | null
   | { type: 'add' }
+  | { type: 'transfer' }
+  | { type: 'recurring' }
+  | { type: 'templates' }
   | { type: 'edit-tx'; id: number }
   | { type: 'edit-income'; id: number }
   | { type: 'edit-expense'; id: number }
@@ -39,6 +42,8 @@ export default function MoneyApp() {
   const [toast, setToast] = useState<{ message: string; type: string } | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [addType, setAddType] = useState<'expense' | 'income'>('expense');
+  const [ledgerSearch, setLedgerSearch] = useState('');
+  const [ledgerAccountId, setLedgerAccountId] = useState<number | 'all'>('all');
 
   const load = useCallback(async (params?: Partial<BootstrapData> | Record<string, string | number>) => {
     const isFirstLoad = !dataRef.current;
@@ -252,6 +257,23 @@ export default function MoneyApp() {
   const m = (n: number) => money(n, data.settings);
   const tab = data.tab;
   const mode = data.app_mode;
+  const filteredLedgerEntries = data.ledger_entries.filter((e) => {
+    if (ledgerAccountId !== 'all') {
+      const matchAccount =
+        e.subtitle.toLowerCase().includes(
+          (data.accounts.find((a) => a.id === ledgerAccountId)?.name || '').toLowerCase(),
+        );
+      if (!matchAccount) return false;
+    }
+    const q = ledgerSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      e.title.toLowerCase().includes(q) ||
+      e.subtitle.toLowerCase().includes(q) ||
+      e.kind.toLowerCase().includes(q) ||
+      String(e.amount).includes(q)
+    );
+  });
 
   const changeMonth = (delta: number) => {
     const next = shiftMonth(data.month_year, data.month_num, delta);
@@ -310,9 +332,9 @@ export default function MoneyApp() {
                   </div>
                   <p className="mm-hero__amount">{m(data.day_net)}</p>
                   <p className="mm-hero__caption">Day balance</p>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--income material-icons-round">south_west</span><span className="mm-hero-chip__label">Income</span></div><p className="mm-hero-chip__value hero-income">+{m(data.day_income)}</p></div>
-                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--expense material-icons-round">north_east</span><span className="mm-hero-chip__label">Expense</span></div><p className="mm-hero-chip__value hero-expense">−{m(data.day_expense)}</p></div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--income"><span className="material-icons-round">south_west</span></span><span className="mm-hero-chip__label">Income</span></div><p className="mm-hero-chip__value hero-income">+{m(data.day_income)}</p></div>
+                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--expense"><span className="material-icons-round">north_east</span></span><span className="mm-hero-chip__label">Expense</span></div><p className="mm-hero-chip__value hero-expense">−{m(data.day_expense)}</p></div>
                   </div>
                   <div className="mm-hero__month-line">
                     <span className="material-icons-round mm-hero__month-icon">calendar_today</span>
@@ -321,10 +343,66 @@ export default function MoneyApp() {
                     <span className="hero-expense">−{m(data.daily_expense_month)}</span>
                   </div>
                 </div>
-                <div className="quick-actions quick-actions--two">
+                <div className="quick-actions quick-actions--three">
                   <button type="button" className="quick-action quick-action--expense" onClick={() => guardEdit(() => { setAddType('expense'); setSheet({ type: 'add' }); })}><span className="quick-action__icon"><span className="material-icons-round">north_east</span></span>Expense</button>
                   <button type="button" className="quick-action quick-action--income" onClick={() => guardEdit(() => { setAddType('income'); setSheet({ type: 'add' }); })}><span className="quick-action__icon"><span className="material-icons-round">south_west</span></span>Income</button>
+                  <button type="button" className="quick-action quick-action--transfer" onClick={() => guardEdit(() => setSheet({ type: 'transfer' }))}><span className="quick-action__icon"><span className="material-icons-round">swap_horiz</span></span>Transfer</button>
                 </div>
+                {(data.quick_templates?.length ?? 0) > 0 && (
+                  <div className="template-chips">
+                    {(data.quick_templates ?? []).map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className="template-chip"
+                        onClick={() => guardEdit(() => {
+                          api('/api/transactions', 'POST', {
+                            transaction_type: t.transaction_type,
+                            category_name: t.category_name,
+                            amount: t.amount,
+                            memo: t.memo,
+                            account: t.account_id || data.default_account_id,
+                            txn_datetime: toDatetimeLocalValue(new Date()),
+                          });
+                        })}
+                      >
+                        <span className="template-chip__label">{t.label}</span>
+                        {t.amount > 0 && <span className="template-chip__amt">{m(t.amount)}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {(data.insights?.top_categories?.length || (data.insights?.month_spent ?? 0) > 0) && (
+                  <div className="insights-card">
+                    <div className="insights-card__head">
+                      <h2 className="insights-card__title">This month</h2>
+                      <span className="insights-card__spent">−{m(data.insights?.month_spent ?? 0)}</span>
+                    </div>
+                    <div className="insights-card__meta">
+                      <span>Last 7 days −{m(data.insights?.week_spent ?? 0)}</span>
+                      {(data.insights?.budget_used_pct ?? 0) > 0 && (
+                        <span>Budget {data.insights?.budget_used_pct}%</span>
+                      )}
+                    </div>
+                    {(data.insights?.top_categories?.length ?? 0) > 0 && (
+                      <div className="insights-card__cats">
+                        {data.insights!.top_categories.map((c) => (
+                          <div key={c.name} className="insights-cat">
+                            <div className="insights-cat__row">
+                              <span className="icon-circle" style={{ background: `${c.style.color}22`, color: c.style.color }}>
+                                <span className="material-icons-round text-sm">{c.style.icon}</span>
+                              </span>
+                              <span className="insights-cat__name">{c.name}</span>
+                              <span className="insights-cat__pct">{c.pct}%</span>
+                            </div>
+                            <div className="insights-cat__bar"><span style={{ width: `${c.pct}%`, background: c.style.color }} /></div>
+                            <p className="insights-cat__amt amount-expense">−{m(c.amount)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="section-head">
                   <h2 className="section-head__title">Recent</h2>
                   <button type="button" className="section-icon-btn" onClick={() => load({ tab: 'ledger' })}><span className="material-icons-round">arrow_forward</span></button>
@@ -337,9 +415,9 @@ export default function MoneyApp() {
                   <div className="mm-hero__eyebrow"><span>{data.current_month_short} Plan</span><span className="material-icons-round">account_balance_wallet</span></div>
                   <p className="mm-hero__amount">{m(data.plan_balance)}</p>
                   <p className="mm-hero__caption">{data.is_balanced && data.show_zero_balance_badge ? 'Fully allocated' : data.plan_balance > 0 ? 'Left to allocate' : data.plan_balance < 0 ? 'Over budget' : 'Plan balance'}</p>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--income material-icons-round">south_west</span><span className="mm-hero-chip__label">Income</span></div><p className="mm-hero-chip__value hero-income">+{m(data.total_income)}</p></div>
-                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--expense material-icons-round">north_east</span><span className="mm-hero-chip__label">Budget</span></div><p className="mm-hero-chip__value hero-expense">{m(data.total_planned)}</p></div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--income"><span className="material-icons-round">south_west</span></span><span className="mm-hero-chip__label">Income</span></div><p className="mm-hero-chip__value hero-income">+{m(data.total_income)}</p></div>
+                    <div className="mm-hero-chip"><div className="mm-hero-chip__row"><span className="mm-hero-chip__icon mm-hero-chip__icon--expense"><span className="material-icons-round">north_east</span></span><span className="mm-hero-chip__label">Budget</span></div><p className="mm-hero-chip__value hero-expense">{m(data.total_planned)}</p></div>
                   </div>
                   <div className="mm-hero__month-line">
                     <span className="material-icons-round mm-hero__month-icon">payments</span>
@@ -383,20 +461,42 @@ export default function MoneyApp() {
                 </div>
               )}
               {data.txn_view !== 'calendar' && (
-                <div className="filter-bar ledger-filter filter-bar--values">
+                <>
+                  <div className="ledger-search">
+                    <span className="material-icons-round">search</span>
+                    <input
+                      type="search"
+                      placeholder="Search category, memo, amount…"
+                      value={ledgerSearch}
+                      onChange={(e) => setLedgerSearch(e.target.value)}
+                    />
+                    <select
+                      value={ledgerAccountId === 'all' ? 'all' : String(ledgerAccountId)}
+                      onChange={(e) => setLedgerAccountId(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                      aria-label="Filter by wallet"
+                    >
+                      <option value="all">All wallets</option>
+                      {data.accounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="filter-bar ledger-filter filter-bar--values">
                   {[
                     { key: 'all', icon: 'apps', label: 'All', value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' },
                     { key: 'income', icon: 'south_west', label: 'Income', value: data.all_time_income, cls: 'amount-income', chip: 'filter-chip--income' },
                     { key: 'expense', icon: 'north_east', label: 'Expense', value: data.all_time_expense, cls: 'amount-expense', chip: 'filter-chip--expense' },
+                    ...(mode !== 'monthly' ? [{ key: 'transfer', icon: 'swap_horiz', label: 'Move', value: 0, cls: '', chip: '' }] : []),
                     ...(mode !== 'monthly' ? [{ key: 'total', icon: 'account_balance', label: 'Total', value: data.all_time_net, cls: data.all_time_net >= 0 ? 'amount-income' : 'amount-expense' }] : []),
                   ].map((f) => (
                     <button key={f.key} type="button" className={`filter-chip ${f.chip || ''} ${data.ledger_filter === f.key ? 'filter-chip--active' : ''}`} onClick={() => load({ ledger_filter: f.key })}>
                       <span className="material-icons-round">{f.icon}</span>
                       <span className="filter-chip__label">{f.label}</span>
-                      <span className={`filter-chip__value ${f.cls}`}>{m(f.value)}</span>
+                      {f.key !== 'transfer' && <span className={`filter-chip__value ${f.cls}`}>{m(f.value)}</span>}
                     </button>
                   ))}
-                </div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -449,7 +549,7 @@ export default function MoneyApp() {
               />
             ) : (
               <LedgerEntriesList
-                entries={data.ledger_entries}
+                entries={filteredLedgerEntries}
                 groupByDay={data.txn_view === 'daily' && mode !== 'monthly'}
                 m={m}
                 onOpen={(e) =>
@@ -492,11 +592,38 @@ export default function MoneyApp() {
 
         {tab === 'more' && (
           <div className="more-menu"><div className="more-menu__grid">
+            <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => guardEdit(() => setSheet({ type: 'transfer' }))}>
+              <div className="more-feature-card__icon"><span className="material-icons-round">swap_horiz</span></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">Transfer</p><p className="more-feature-card__desc">Move money between wallets</p></div>
+              <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
+            </button>
+            <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => guardEdit(() => setSheet({ type: 'recurring' }))}>
+              <div className="more-feature-card__icon"><span className="material-icons-round">event_repeat</span></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">Recurring</p><p className="more-feature-card__desc">Salary, rent, bills on autopilot</p></div>
+              <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
+            </button>
+            <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => guardEdit(() => setSheet({ type: 'templates' }))}>
+              <div className="more-feature-card__icon"><span className="material-icons-round">bolt</span></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">Quick templates</p><p className="more-feature-card__desc">One-tap common expenses</p></div>
+              <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
+            </button>
+            <a className="more-feature-card more-feature-card--settings" href="/api/export/transactions" download>
+              <div className="more-feature-card__icon"><span className="material-icons-round">download</span></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">Export CSV</p><p className="more-feature-card__desc">Download all transactions</p></div>
+              <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
+            </a>
             <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => load({ tab: 'settings' })}>
               <div className="more-feature-card__icon"><span className="material-icons-round">settings</span></div>
               <div className="more-feature-card__text"><p className="more-feature-card__title">Settings</p><p className="more-feature-card__desc">Theme, currency &amp; accounts</p></div>
               <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
             </button>
+            {user?.isAdmin && (
+              <a className="more-feature-card more-feature-card--settings" href="/admin">
+                <div className="more-feature-card__icon"><span className="material-icons-round">admin_panel_settings</span></div>
+                <div className="more-feature-card__text"><p className="more-feature-card__title">Super Admin</p><p className="more-feature-card__desc">Users, trials &amp; subscriptions</p></div>
+                <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
+              </a>
+            )}
           </div></div>
         )}
 
@@ -508,6 +635,11 @@ export default function MoneyApp() {
                 <p className="font-medium">{user.email}</p>
                 {access?.status === 'active' && (
                   <p className="text-xs text-md-on-surface-variant mt-1">Subscription active</p>
+                )}
+                {user.isAdmin && (
+                  <a href="/admin" className="admin-settings-link">
+                    Open Super Admin
+                  </a>
                 )}
               </div>
             )}
@@ -565,6 +697,26 @@ export default function MoneyApp() {
               {sheet.type === 'add' && mode === 'monthly' && (
                 <BudgetAddForm data={data} addType={addType} setAddType={setAddType} onIncome={(b) => api('/api/incomes', 'POST', b)} onExpense={(b) => api('/api/expenses', 'POST', b)} onClose={() => setSheet(null)} />
               )}
+              {sheet.type === 'transfer' && (
+                <TransferForm data={data} onSubmit={(b) => api('/api/transfers', 'POST', b)} onClose={() => setSheet(null)} />
+              )}
+              {sheet.type === 'recurring' && (
+                <RecurringForm
+                  data={data}
+                  onCreate={(b) => api('/api/recurring', 'POST', b)}
+                  onToggle={(id, is_active) => api(`/api/recurring/${id}`, 'PUT', { is_active })}
+                  onDelete={(id) => api(`/api/recurring/${id}`, 'DELETE')}
+                  onClose={() => setSheet(null)}
+                />
+              )}
+              {sheet.type === 'templates' && (
+                <TemplatesForm
+                  data={data}
+                  onCreate={(b) => api('/api/templates', 'POST', b)}
+                  onDelete={(id) => api(`/api/templates/${id}`, 'DELETE')}
+                  onClose={() => setSheet(null)}
+                />
+              )}
               {sheet.type === 'create-account' && (
                 <AccountForm onSubmit={(b) => api('/api/accounts', 'POST', b)} onClose={() => setSheet(null)} />
               )}
@@ -620,8 +772,8 @@ function LedgerEntryRow({
         <p className="font-medium truncate">{entry.title}</p>
         <p className="text-xs text-md-on-surface-variant">{entry.subtitle}</p>
       </div>
-      <p className={`font-semibold ${entry.kind === 'income' ? 'amount-income' : 'amount-expense'}`}>
-        {entry.kind === 'income' ? '+' : '−'}
+      <p className={`font-semibold ${entry.kind === 'income' ? 'amount-income' : entry.kind === 'transfer' ? 'text-md-primary' : 'amount-expense'}`}>
+        {entry.kind === 'income' ? '+' : entry.kind === 'transfer' ? '' : '−'}
         {m(entry.amount)}
       </p>
       {entry.source === 'budget' && entry.kind === 'expense' && onTogglePaid && (
@@ -890,7 +1042,7 @@ function ActivityList({ items, m, onOpen }: { items: BootstrapData['recent_activ
         <div key={e.pk} className="mm-transaction ripple-item flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => onOpen(e.pk)}>
           <div className="icon-circle" style={{ background: `${e.style.color}22`, color: e.style.color }}><span className="material-icons-round">{e.style.icon}</span></div>
           <div className="flex-1 min-w-0"><p className="font-medium truncate">{e.title}</p><p className="text-xs text-md-on-surface-variant">{e.subtitle}</p></div>
-          <p className={`font-semibold ${e.kind === 'income' ? 'amount-income' : 'amount-expense'}`}>{e.kind === 'income' ? '+' : '−'}{m(e.amount)}</p>
+          <p className={`font-semibold ${e.kind === 'income' ? 'amount-income' : e.kind === 'transfer' ? 'text-md-primary' : 'amount-expense'}`}>{e.kind === 'income' ? '+' : e.kind === 'transfer' ? '' : '−'}{m(e.amount)}</p>
         </div>
       ))}
     </div>
@@ -1156,8 +1308,8 @@ function SettingsForm({ data, onSave }: { data: BootstrapData; onSave: (b: unkno
           <label className="cursor-pointer"><input type="radio" name="app_mode" value="monthly" className="sr-only" defaultChecked={s.appMode === 'monthly'} /><span className="settings-option">Monthly</span></label>
         </div>
         <div className="settings-pill-track mt-3">
-          <label className="cursor-pointer"><input type="radio" name="theme" value="dark" className="sr-only" defaultChecked={s.theme !== 'light'} /><span className="settings-option">Dark</span></label>
-          <label className="cursor-pointer"><input type="radio" name="theme" value="light" className="sr-only" defaultChecked={s.theme === 'light'} /><span className="settings-option">Light</span></label>
+          <label className="cursor-pointer"><input type="radio" name="theme" value="light" className="sr-only" defaultChecked={s.theme !== 'dark'} /><span className="settings-option">Light</span></label>
+          <label className="cursor-pointer"><input type="radio" name="theme" value="dark" className="sr-only" defaultChecked={s.theme === 'dark'} /><span className="settings-option">Dark</span></label>
         </div>
       </div>
       <div className="form-section form-section--soft">
@@ -1169,3 +1321,216 @@ function SettingsForm({ data, onSave }: { data: BootstrapData; onSave: (b: unkno
     </form>
   );
 }
+
+function TransferForm({
+  data,
+  onSubmit,
+  onClose,
+}: {
+  data: BootstrapData;
+  onSubmit: (b: unknown) => void;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [fromId, setFromId] = useState(data.default_account_id || data.accounts[0]?.id || 0);
+  const [toId, setToId] = useState(data.accounts.find((a) => a.id !== (data.default_account_id || data.accounts[0]?.id))?.id || data.accounts[1]?.id || 0);
+  const [dt, setDt] = useState(toDatetimeLocalValue(new Date()));
+  const [memo, setMemo] = useState('');
+
+  return (
+    <form
+      className="form-sheet"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit({ from_account: fromId, to_account: toId, amount, txn_datetime: dt, memo, category_name: 'Transfer' });
+      }}
+    >
+      <div className="form-sheet__head">
+        <h2 className="form-sheet__title">Transfer</h2>
+        <p className="form-sheet__sub">Move money between wallets</p>
+      </div>
+      <div className="form-section">
+        <div className="form-field form-field--amount">
+          <label className="form-field__label">Amount</label>
+          <input className="md-input" type="number" step="0.01" min="0" required value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </div>
+        <div className="form-field">
+          <label className="form-field__label">From</label>
+          <select className="md-select" value={fromId} onChange={(e) => setFromId(Number(e.target.value))} required>
+            {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div className="form-field">
+          <label className="form-field__label">To</label>
+          <select className="md-select" value={toId} onChange={(e) => setToId(Number(e.target.value))} required>
+            {data.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+        <div className="form-field">
+          <label className="form-field__label">Date &amp; time</label>
+          <input className="md-input" type="datetime-local" required value={dt} onChange={(e) => setDt(e.target.value)} />
+        </div>
+        <div className="form-field">
+          <label className="form-field__label">Memo</label>
+          <input className="md-input" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="Optional" />
+        </div>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
+        <button type="submit" className="btn-primary">Transfer</button>
+      </div>
+    </form>
+  );
+}
+
+function RecurringForm({
+  data,
+  onCreate,
+  onToggle,
+  onDelete,
+  onClose,
+}: {
+  data: BootstrapData;
+  onCreate: (b: unknown) => void;
+  onToggle: (id: number, is_active: boolean) => void;
+  onDelete: (id: number) => void;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState('');
+  const [type, setType] = useState<'expense' | 'income'>('expense');
+  const [frequency, setFrequency] = useState('monthly');
+  const [accountId, setAccountId] = useState(data.default_account_id || data.accounts[0]?.id || 0);
+
+  return (
+    <div className="form-sheet">
+      <div className="form-sheet__head">
+        <h2 className="form-sheet__title">Recurring</h2>
+        <p className="form-sheet__sub">Auto-create entries on a schedule</p>
+      </div>
+      {(data.recurring_rules?.length ?? 0) > 0 && (
+        <div className="form-section space-y-2">
+          {(data.recurring_rules ?? []).map((r) => (
+            <div key={r.id} className="recurring-row">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium truncate">{r.category_name}</p>
+                <p className="text-xs text-md-on-surface-variant">{r.frequency} · {r.account_name} · {r.is_active ? 'On' : 'Paused'}</p>
+              </div>
+              <button type="button" className="section-icon-btn" onClick={() => onToggle(r.id, !r.is_active)} aria-label="Toggle">
+                <span className="material-icons-round">{r.is_active ? 'pause' : 'play_arrow'}</span>
+              </button>
+              <button type="button" className="section-icon-btn" onClick={() => onDelete(r.id)} aria-label="Delete">
+                <span className="material-icons-round">delete</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <form
+        className="form-section"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onCreate({
+            transaction_type: type,
+            category_name: category,
+            amount,
+            account: accountId,
+            frequency,
+            next_run_at: new Date().toISOString(),
+          });
+          setAmount('');
+          setCategory('');
+        }}
+      >
+        <p className="form-field__label mb-2">Add rule</p>
+        <div className="add-type-tabs mb-3">
+          <button type="button" className={`add-type-tab ${type === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setType('expense')}>Expense</button>
+          <button type="button" className={`add-type-tab ${type === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setType('income')}>Income</button>
+        </div>
+        <div className="form-field form-field--amount"><label className="form-field__label">Amount</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <div className="form-field"><label className="form-field__label">Name</label><input className="md-input" required value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Rent, Salary…" /></div>
+        <AccountSelect data={data} value={accountId} onChange={setAccountId} />
+        <div className="form-field">
+          <label className="form-field__label">Frequency</label>
+          <select className="md-select" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+        <div className="form-actions mt-3">
+          <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
+          <button type="submit" className="btn-primary">Save rule</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function TemplatesForm({
+  data,
+  onCreate,
+  onDelete,
+  onClose,
+}: {
+  data: BootstrapData;
+  onCreate: (b: unknown) => void;
+  onDelete: (id: number) => void;
+  onClose: () => void;
+}) {
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState('');
+  const [category, setCategory] = useState('');
+  const [type, setType] = useState<'expense' | 'income'>('expense');
+  const [accountId, setAccountId] = useState(data.default_account_id || data.accounts[0]?.id || 0);
+
+  return (
+    <div className="form-sheet">
+      <div className="form-sheet__head">
+        <h2 className="form-sheet__title">Quick templates</h2>
+        <p className="form-sheet__sub">Tap on Home to add instantly</p>
+      </div>
+      {(data.quick_templates?.length ?? 0) > 0 && (
+        <div className="form-section flex flex-wrap gap-2">
+          {(data.quick_templates ?? []).map((t) => (
+            <button key={t.id} type="button" className="template-chip template-chip--manage" onClick={() => onDelete(t.id)}>
+              <span>{t.label}</span>
+              <span className="material-icons-round text-sm">close</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <form
+        className="form-section"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onCreate({
+            label: label || category,
+            transaction_type: type,
+            category_name: category || label,
+            amount: amount || 0,
+            account: accountId,
+          });
+          setLabel('');
+          setAmount('');
+          setCategory('');
+        }}
+      >
+        <p className="form-field__label mb-2">New template</p>
+        <div className="add-type-tabs mb-3">
+          <button type="button" className={`add-type-tab ${type === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setType('expense')}>Expense</button>
+          <button type="button" className={`add-type-tab ${type === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setType('income')}>Income</button>
+        </div>
+        <div className="form-field"><label className="form-field__label">Label</label><input className="md-input" required value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Tea, Petrol…" /></div>
+        <div className="form-field"><label className="form-field__label">Category</label><input className="md-input" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Same as label if empty" /></div>
+        <div className="form-field form-field--amount"><label className="form-field__label">Default amount</label><input className="md-input" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+        <AccountSelect data={data} value={accountId} onChange={setAccountId} />
+        <div className="form-actions mt-3">
+          <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
+          <button type="submit" className="btn-primary">Save template</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+

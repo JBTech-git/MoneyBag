@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="480" viewBox="0 0 480 480" role="img" aria-label="Replace with your PhonePe QR">
+  <rect width="480" height="480" fill="#ffffff"/>
+  <rect x="24" y="24" width="432" height="432" rx="24" fill="none" stroke="#0F766E" stroke-width="4" stroke-dasharray="12 10"/>
+  <text x="240" y="220" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="22" fill="#0F766E" font-weight="700">PhonePe QR</text>
+  <text x="240" y="255" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="15" fill="#64748b">Replace this file with your</text>
+  <text x="240" y="278" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="15" fill="#64748b">PhonePe receive QR screenshot</text>
+  <text x="240" y="320" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#94a3b8">web/public/payments/phonepe-qr.png</text>
+</svg>

@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       access: serializeAccess(user),
       message: isNew
         ? `Welcome! You have ${trialDays} day${trialDays === 1 ? '' : 's'} free.`
-        : 'Signed in',
+        : 'Welcome back — signed in',
     });
     setSessionCookie(res, token);
     return res;

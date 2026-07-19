@@ -187,7 +187,7 @@ export default function PwaRegister() {
 
             <div className="pwa-install__row">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/icons/app-icon-192.png" alt="" className="pwa-install__icon-sm" width={56} height={56} />
+              <img src="/icons/Money-bag-5.png" alt="" className="pwa-install__icon-sm" width={56} height={56} />
               <div className="pwa-install__copy">
                 <h2 id="pwa-install-title" className="pwa-install__title pwa-install__title--sm">
                   Install Moneybag

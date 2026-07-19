@@ -138,7 +138,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     tab === 'accounts' || tab === 'home' || (needsLedger && txnView === 'daily' && filter === 'total');
   const needsBudgetTotals = mode === 'monthly' || tab === 'ledger' || tab === 'home';
   const needsDayMonthAggs = tab === 'home' && mode === 'daily';
-  const needsInsights = tab === 'home';
+  const needsInsights = tab === 'home' || tab === 'more';
   const needsTools = tab === 'home' || tab === 'more' || tab === 'ledger';
 
   const txInclude = { account: true, toAccount: true } as const;
@@ -206,10 +206,15 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
       ? prisma.transaction.findMany({
           where: {
             userId,
-            transactionType: 'expense',
+            transactionType: { in: ['expense', 'income'] },
             transactionDate: { gte: monthStart, lte: monthEnd },
           },
-          select: { categoryName: true, amount: true, transactionDate: true },
+          select: {
+            categoryName: true,
+            amount: true,
+            transactionDate: true,
+            transactionType: true,
+          },
         })
       : Promise.resolve([]),
     needsTools
@@ -360,27 +365,36 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
 
   const categoryTotals = new Map<string, number>();
   let weekSpent = 0;
+  let monthIncomeInsight = 0;
+  let monthExpenseInsight = 0;
   for (const t of insightTxs) {
     const amt = toNum(t.amount);
+    if (t.transactionType === 'income') {
+      monthIncomeInsight += amt;
+      continue;
+    }
+    monthExpenseInsight += amt;
     categoryTotals.set(t.categoryName, (categoryTotals.get(t.categoryName) || 0) + amt);
     if (t.transactionDate >= weekStart) weekSpent += amt;
   }
-  const monthExpenseTotal = Array.from(categoryTotals.values()).reduce((s, n) => s + n, 0);
   const topCategories = Array.from(categoryTotals.entries())
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
+    .slice(0, 8)
     .map(([name, amount]) => ({
       name,
       amount,
-      pct: monthExpenseTotal ? Math.round((amount / monthExpenseTotal) * 100) : 0,
+      pct: monthExpenseInsight ? Math.round((amount / monthExpenseInsight) * 100) : 0,
       style: categoryStyle(name),
     }));
 
   const insights = {
     top_categories: topCategories,
     week_spent: weekSpent,
-    month_spent: monthExpenseTotal,
+    month_spent: monthExpenseInsight,
+    month_income: monthIncomeInsight,
+    month_net: monthIncomeInsight - monthExpenseInsight,
     budget_used_pct: budgetSpentPct,
+    txn_count: insightTxs.length,
   };
 
   const quickTemplates = templates.map((t) => ({

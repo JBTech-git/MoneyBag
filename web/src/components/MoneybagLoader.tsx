@@ -21,7 +21,7 @@ export default function MoneybagLoader({ label, size = 'md', overlay = false }: 
         <span className="mb-loader__expense mb-loader__expense--3" aria-hidden="true">−</span>
 
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/icons/moneybag.png" alt="" className="mb-loader__bag" width={96} height={96} />
+        <img src="/icons/Money-bag-5.png" alt="" className="mb-loader__bag" width={96} height={96} />
       </div>
       {label ? <p className="mb-loader__label">{label}</p> : null}
     </div>

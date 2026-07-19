@@ -168,44 +168,78 @@ export function authErrorResponse(err: unknown) {
   return null;
 }
 
+async function findUserByEmail(email: string) {
+  // Case-insensitive so User@Mail.com and user@mail.com are the same account
+  return prisma.user.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' } },
+  });
+}
+
 async function findOrCreateUser(email: string) {
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await findUserByEmail(email);
   if (existing) {
     if (existing.disabledAt) {
       throw new AuthError('This account has been disabled. Contact support.', 403);
     }
-    const synced = await syncSuperAdminFlag(existing);
+    // Keep stored email normalized to lowercase for future exact lookups
+    let user = existing;
+    if (existing.email !== email) {
+      user = await prisma.user.update({
+        where: { id: existing.id },
+        data: { email },
+      });
+    }
+    const synced = await syncSuperAdminFlag(user);
     return { user: synced, isNew: false };
   }
 
   const site = await getSiteConfig();
   const trialEndsAt = trialEndsAtFromNow(site.trialDays);
-  const user = await prisma.user.create({
-    data: {
-      email,
-      passwordHash: null,
-      name: email.split('@')[0] || 'User',
-      isAdmin: isEmailSuperAdmin(email),
-      trialEndsAt,
-      subscriptionStatus: 'trial',
-      settings: {
-        create: {
-          currencyCode: 'INR',
-          currencySymbol: '₹',
-          theme: 'light',
+  try {
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash: null,
+        name: email.split('@')[0] || 'User',
+        isAdmin: isEmailSuperAdmin(email),
+        trialEndsAt,
+        subscriptionStatus: 'trial',
+        settings: {
+          create: {
+            currencyCode: 'INR',
+            currencySymbol: '₹',
+            theme: 'light',
+          },
+        },
+        accounts: {
+          create: {
+            name: 'Cash',
+            accountType: 'cash',
+            isDefault: true,
+            color: '#0F766E',
+          },
         },
       },
-      accounts: {
-        create: {
-          name: 'Cash',
-          accountType: 'cash',
-          isDefault: true,
-          color: '#0F766E',
-        },
-      },
-    },
-  });
-  return { user, isNew: true };
+    });
+    return { user, isNew: true };
+  } catch (err) {
+    // Race: another request created the same email — sign in to that user
+    const code =
+      err && typeof err === 'object' && 'code' in err
+        ? String((err as { code: string }).code)
+        : '';
+    if (code === 'P2002') {
+      const raced = await findUserByEmail(email);
+      if (raced) {
+        if (raced.disabledAt) {
+          throw new AuthError('This account has been disabled. Contact support.', 403);
+        }
+        const synced = await syncSuperAdminFlag(raced);
+        return { user: synced, isNew: false };
+      }
+    }
+    throw err;
+  }
 }
 
 export async function sendEmailVerificationCode(rawEmail: string) {
@@ -218,16 +252,19 @@ export async function sendEmailVerificationCode(rawEmail: string) {
   const codeHash = await hashVerificationCode(code);
   const expiresAt = verificationExpiresAt();
 
-  await prisma.emailVerification.deleteMany({ where: { email } });
+  await prisma.emailVerification.deleteMany({
+    where: { email: { equals: email, mode: 'insensitive' } },
+  });
   await prisma.emailVerification.create({
     data: { email, codeHash, expiresAt },
   });
 
+  const existing = await findUserByEmail(email);
   const delivery = await sendVerificationEmail(email, code);
   return {
     email,
-    message: 'Verification code sent',
-    isNewHint: !(await prisma.user.findUnique({ where: { email } })),
+    message: existing ? 'Sign-in code sent' : 'Verification code sent',
+    isNewHint: !existing,
     ...delivery,
   };
 }
@@ -244,7 +281,7 @@ export async function verifyEmailCode(rawEmail: string, rawCode: string) {
   }
 
   const record = await prisma.emailVerification.findFirst({
-    where: { email },
+    where: { email: { equals: email, mode: 'insensitive' } },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -259,7 +296,9 @@ export async function verifyEmailCode(rawEmail: string, rawCode: string) {
     throw new AuthError('Invalid code. Try again.', 400);
   }
 
-  await prisma.emailVerification.deleteMany({ where: { email } });
+  await prisma.emailVerification.deleteMany({
+    where: { email: { equals: email, mode: 'insensitive' } },
+  });
   const { user, isNew } = await findOrCreateUser(email);
   return { user, isNew };
 }

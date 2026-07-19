@@ -1,5 +1,5 @@
 /* Moneybag service worker */
-const CACHE = 'moneybag-v6';
+const CACHE = 'moneybag-v7';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());

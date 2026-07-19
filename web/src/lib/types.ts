@@ -58,7 +58,10 @@ export type BootstrapData = {
     }>;
     week_spent: number;
     month_spent: number;
+    month_income: number;
+    month_net: number;
     budget_used_pct: number;
+    txn_count: number;
   };
   quick_templates?: Array<{
     id: number;

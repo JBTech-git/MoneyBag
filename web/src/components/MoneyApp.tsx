@@ -10,6 +10,7 @@ import { toDatetimeLocalValue } from '@/lib/dates';
 import MoneybagLoader from '@/components/MoneybagLoader';
 import AuthScreen from '@/components/AuthScreen';
 import PaywallScreen from '@/components/PaywallScreen';
+import AnalysisPanel from '@/components/AnalysisPanel';
 import type { AccessState } from '@/lib/subscription';
 
 type SessionUser = { id: string; email: string; name: string; isAdmin?: boolean };
@@ -20,6 +21,7 @@ type Sheet =
   | { type: 'transfer' }
   | { type: 'recurring' }
   | { type: 'templates' }
+  | { type: 'analysis' }
   | { type: 'edit-tx'; id: number }
   | { type: 'edit-income'; id: number }
   | { type: 'edit-expense'; id: number }
@@ -386,7 +388,7 @@ export default function MoneyApp() {
                     </div>
                     {(data.insights?.top_categories?.length ?? 0) > 0 && (
                       <div className="insights-card__cats">
-                        {data.insights!.top_categories.map((c) => (
+                        {data.insights!.top_categories.slice(0, 3).map((c) => (
                           <div key={c.name} className="insights-cat">
                             <div className="insights-cat__row">
                               <span className="icon-circle" style={{ background: `${c.style.color}22`, color: c.style.color }}>
@@ -401,6 +403,9 @@ export default function MoneyApp() {
                         ))}
                       </div>
                     )}
+                    <button type="button" className="insights-card__more" onClick={() => setSheet({ type: 'analysis' })}>
+                      Open analysis
+                    </button>
                   </div>
                 )}
                 <div className="section-head">
@@ -607,11 +612,11 @@ export default function MoneyApp() {
               <div className="more-feature-card__text"><p className="more-feature-card__title">Quick templates</p><p className="more-feature-card__desc">One-tap common expenses</p></div>
               <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
             </button>
-            <a className="more-feature-card more-feature-card--settings" href="/api/export/transactions" download>
-              <div className="more-feature-card__icon"><span className="material-icons-round">download</span></div>
-              <div className="more-feature-card__text"><p className="more-feature-card__title">Export CSV</p><p className="more-feature-card__desc">Download all transactions</p></div>
+            <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => setSheet({ type: 'analysis' })}>
+              <div className="more-feature-card__icon"><span className="material-icons-round">analytics</span></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">Analysis</p><p className="more-feature-card__desc">Spending insights &amp; CSV export</p></div>
               <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
-            </a>
+            </button>
             <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => load({ tab: 'settings' })}>
               <div className="more-feature-card__icon"><span className="material-icons-round">settings</span></div>
               <div className="more-feature-card__text"><p className="more-feature-card__title">Settings</p><p className="more-feature-card__desc">Theme, currency &amp; accounts</p></div>
@@ -665,7 +670,7 @@ export default function MoneyApp() {
         <div className="app-nav__inner">
           <div className="app-nav__brand" aria-hidden="true">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/moneybag.png" alt="" className="app-nav__brand-icon-img" width={40} height={40} />
+            <img src="/icons/Money-bag-5.png" alt="" className="app-nav__brand-icon-img" width={40} height={40} />
             <div className="app-nav__brand-text"><span className="app-nav__brand-title">Moneybag</span><span className="app-nav__brand-sub">Personal finance</span></div>
           </div>
           <p className="app-nav__section">Menu</p>
@@ -686,11 +691,29 @@ export default function MoneyApp() {
       {sheet && (
         <>
           <div className="sheet-backdrop fixed inset-0 z-50 bg-black/40 open" onClick={() => setSheet(null)} />
-          <div className="bottom-sheet fixed bottom-0 w-full z-[60] bg-md-surface rounded-t-[28px] shadow-md-3 open max-h-[85dvh] overflow-y-auto">
-            <div className="sticky top-0 bg-md-surface z-10 pt-3 pb-2 px-4">
-              <button type="button" onClick={() => setSheet(null)} className="flex justify-center w-full py-1" aria-label="Close"><span className="w-8 h-1 rounded-full bg-md-outline/40" /></button>
+          <div
+            className={`bottom-sheet fixed bottom-0 w-full z-[60] bg-md-surface shadow-md-3 open overflow-y-auto ${
+              sheet.type === 'analysis'
+                ? 'bottom-sheet--fullscreen'
+                : 'rounded-t-[28px] max-h-[85dvh]'
+            }`}
+          >
+            <div className={`sticky top-0 bg-md-surface z-10 px-4 ${sheet.type === 'analysis' ? 'pt-4 pb-2' : 'pt-3 pb-2'}`}>
+              {sheet.type === 'analysis' ? (
+                <div className="analysis-sheet-bar">
+                  <button type="button" className="analysis-sheet-bar__back" onClick={() => setSheet(null)} aria-label="Close analysis">
+                    <span className="material-icons-round">arrow_back</span>
+                  </button>
+                  <span className="analysis-sheet-bar__title">Analysis</span>
+                  <span className="analysis-sheet-bar__spacer" />
+                </div>
+              ) : (
+                <button type="button" onClick={() => setSheet(null)} className="flex justify-center w-full py-1" aria-label="Close">
+                  <span className="w-8 h-1 rounded-full bg-md-outline/40" />
+                </button>
+              )}
             </div>
-            <div className="px-6 pb-8">
+            <div className={`pb-8 ${sheet.type === 'analysis' ? 'px-4 sm:px-6' : 'px-6'}`}>
               {sheet.type === 'add' && mode === 'daily' && (
                 <DailyAddForm data={data} addType={addType} setAddType={setAddType} onSubmit={(body) => api('/api/transactions', 'POST', body)} onClose={() => setSheet(null)} />
               )}
@@ -716,6 +739,9 @@ export default function MoneyApp() {
                   onDelete={(id) => api(`/api/templates/${id}`, 'DELETE')}
                   onClose={() => setSheet(null)}
                 />
+              )}
+              {sheet.type === 'analysis' && (
+                <AnalysisPanel data={data} m={m} onClose={() => setSheet(null)} />
               )}
               {sheet.type === 'create-account' && (
                 <AccountForm onSubmit={(b) => api('/api/accounts', 'POST', b)} onClose={() => setSheet(null)} />

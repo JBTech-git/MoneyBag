@@ -78,11 +78,11 @@ export default function AuthScreen({ onSuccess }: Props) {
       {loading && <MoneybagLoader size="lg" overlay />}
       <div className="auth-screen__card">
         <div className="auth-screen__brand">
-          <img src="/icons/app-icon.png" alt="" className="auth-screen__logo" width={56} height={56} />
+          <img src="/icons/Money-bag-5.png" alt="" className="auth-screen__logo" width={56} height={56} />
           <h1 className="auth-screen__title">Moneybag</h1>
           <p className="auth-screen__subtitle">
             {step === 'email'
-              ? "Enter your email. We'll send a code."
+              ? "Enter your email. We'll send a code to sign in or create your account."
               : codeHint === 'email'
                 ? `Enter the 6-digit code sent to ${email}`
                 : `Sign in to ${email} with the code below`}

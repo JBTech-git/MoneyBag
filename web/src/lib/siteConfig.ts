@@ -1,4 +1,4 @@
-import type { SiteConfig } from '@prisma/client';
+import type { Prisma, SiteConfig } from '@prisma/client';
 import { prisma } from './db';
 
 export type SiteConfigInput = {
@@ -51,7 +51,7 @@ export async function getSiteConfig(): Promise<SiteConfig> {
 export async function updateSiteConfig(input: SiteConfigInput): Promise<SiteConfig> {
   await getSiteConfig();
 
-  const data: SiteConfigInput = {};
+  const data: Prisma.SiteConfigUpdateInput = {};
   if (input.trialDays !== undefined) {
     data.trialDays = Math.min(3650, Math.max(1, Math.floor(Number(input.trialDays) || 1)));
   }

@@ -6,9 +6,9 @@ const buckets = new Map<string, Bucket>();
 
 function prune(now: number) {
   if (buckets.size < 500) return;
-  for (const [key, value] of buckets) {
+  buckets.forEach((value, key) => {
     if (value.resetAt <= now) buckets.delete(key);
-  }
+  });
 }
 
 /** Simple in-memory rate limit (per server instance). Good enough for Vercel cold starts + small apps. */

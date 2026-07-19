@@ -36,7 +36,7 @@ function shiftMonth(year: number, month: number, delta: number) {
 }
 
 export default function MoneyApp() {
-  const { t, setLang, lang } = useT();
+  const { t, setLang } = useT();
   const [authPhase, setAuthPhase] = useState<'checking' | 'guest' | 'paywall' | 'readonly' | 'ready'>('checking');
   const [user, setUser] = useState<SessionUser | null>(null);
   const [access, setAccess] = useState<AccessState | null>(null);

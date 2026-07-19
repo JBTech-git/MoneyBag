@@ -2,7 +2,6 @@ import { en, type MessageKey } from './messages/en';
 import { hi } from './messages/hi';
 import { bn } from './messages/bn';
 import {
-  isLanguage,
   LANG_STORAGE_KEY,
   parseLanguage,
   type Language,

@@ -35,7 +35,7 @@ export function defaultGeminiModel() {
 function modelCandidates() {
   const preferred = process.env.GEMINI_MODEL?.trim();
   const list = preferred ? [preferred, ...DEFAULT_MODELS] : [...DEFAULT_MODELS];
-  return [...new Set(list)];
+  return Array.from(new Set(list));
 }
 
 export function isGeminiQuotaError(message: string) {

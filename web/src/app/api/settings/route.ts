@@ -31,6 +31,8 @@ export async function GET() {
 
 async function saveSettings(req: NextRequest, userId: string) {
   const body = await req.json();
+  const goalTargetRaw = body.savings_goal_target ?? body.savingsGoalTarget;
+  const goalCurrentRaw = body.savings_goal_current ?? body.savingsGoalCurrent;
   const settings = await updateSettings(userId, {
     displayName: body.display_name ?? body.displayName,
     currencyCode: body.currency_code ?? body.currencyCode,
@@ -44,6 +46,18 @@ async function saveSettings(req: NextRequest, userId: string) {
         : body.showZeroBalanceBadge !== undefined
           ? Boolean(body.showZeroBalanceBadge)
           : undefined,
+    savingsGoalName:
+      body.savings_goal_name !== undefined || body.savingsGoalName !== undefined
+        ? String(body.savings_goal_name ?? body.savingsGoalName ?? '')
+        : undefined,
+    savingsGoalTarget:
+      goalTargetRaw !== undefined && goalTargetRaw !== null && goalTargetRaw !== ''
+        ? Number(goalTargetRaw)
+        : undefined,
+    savingsGoalCurrent:
+      goalCurrentRaw !== undefined && goalCurrentRaw !== null && goalCurrentRaw !== ''
+        ? Number(goalCurrentRaw)
+        : undefined,
   });
   return NextResponse.json({ ok: true, message: 'Updated', settings });
 }

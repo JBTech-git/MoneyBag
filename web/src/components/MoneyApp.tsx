@@ -10,9 +10,15 @@ import MoneybagLoader from '@/components/MoneybagLoader';
 import AuthScreen from '@/components/AuthScreen';
 import PaywallScreen from '@/components/PaywallScreen';
 import AnalysisPanel from '@/components/AnalysisPanel';
+import SipCalculator from '@/components/SipCalculator';
+import PasteSmsForm from '@/components/PasteSmsForm';
+import ReceiptOcrForm from '@/components/ReceiptOcrForm';
+import InsightsChat from '@/components/InsightsChat';
 import { useT } from '@/components/I18nProvider';
 import { LANGUAGE_LABELS, LANGUAGES, parseLanguage } from '@/lib/i18n';
 import { accountTypeChoices } from '@/lib/accounts';
+import { EXPENSE_CATEGORIES, INCOME_SOURCES } from '@/lib/categories';
+import { budgetPerDayLeft } from '@/lib/budgetPace';
 import type { AccessState } from '@/lib/subscription';
 
 type SessionUser = { id: string; email: string; name: string; isAdmin?: boolean };
@@ -24,6 +30,11 @@ type Sheet =
   | { type: 'recurring' }
   | { type: 'templates' }
   | { type: 'analysis' }
+  | { type: 'sip' }
+  | { type: 'paste-sms' }
+  | { type: 'receipt-ocr' }
+  | { type: 'insights' }
+  | { type: 'savings-goals' }
   | { type: 'edit-tx'; id: number }
   | { type: 'edit-income'; id: number }
   | { type: 'edit-expense'; id: number }
@@ -265,6 +276,14 @@ export default function MoneyApp() {
   const m = (n: number) => money(n, data.settings);
   const tab = data.tab;
   const mode = data.app_mode;
+  const pace = budgetPerDayLeft(data.budget_remaining, data.month_year, data.month_num);
+  const upcomingBills = (data.recurring_rules ?? [])
+    .filter((r) => r.is_active)
+    .slice()
+    .sort((a, b) => new Date(a.next_run_at).getTime() - new Date(b.next_run_at).getTime())
+    .slice(0, 5);
+  const savingsGoals = data.savings_goals ?? [];
+  const hasBudgetRows = data.budget_expense_rows.length > 0 || data.budget_income_rows.length > 0;
   const filteredLedgerEntries = data.ledger_entries.filter((e) => {
     if (ledgerAccountId !== 'all') {
       const matchAccount =
@@ -392,6 +411,13 @@ export default function MoneyApp() {
                         <span>{t('home.budgetPct', { pct: data.insights?.budget_used_pct ?? 0 })}</span>
                       )}
                     </div>
+                    {data.total_planned > 0 && pace.daysLeft > 0 && (
+                      <p className="insights-card__pace">
+                        {t('home.budgetPace', { amount: m(Math.max(0, pace.perDay)) })}
+                        <span className="opacity-60"> · </span>
+                        {t('home.budgetPaceDays', { days: pace.daysLeft })}
+                      </p>
+                    )}
                     {(data.insights?.top_categories?.length ?? 0) > 0 && (
                       <div className="insights-card__cats">
                         {data.insights!.top_categories.slice(0, 3).map((c) => (
@@ -412,6 +438,41 @@ export default function MoneyApp() {
                     <button type="button" className="insights-card__more" onClick={() => setSheet({ type: 'analysis' })}>
                       {t('home.openAnalysis')}
                     </button>
+                  </div>
+                )}
+                {!(data.insights?.top_categories?.length || (data.insights?.month_spent ?? 0) > 0) && data.total_planned > 0 && pace.daysLeft > 0 && (
+                  <p className="insights-card__pace" style={{ margin: '0.5rem 0 0.75rem' }}>
+                    {t('home.budgetPace', { amount: m(Math.max(0, pace.perDay)) })}
+                    <span className="opacity-60"> · </span>
+                    {t('home.budgetPaceDays', { days: pace.daysLeft })}
+                  </p>
+                )}
+                <SavingsGoalsCard
+                  goals={savingsGoals}
+                  m={m}
+                  onOpen={() => guardEdit(() => setSheet({ type: 'savings-goals' }))}
+                />
+                {upcomingBills.length > 0 && (
+                  <div className="upcoming-card">
+                    <div className="section-head section-head--inline">
+                      <h2 className="section-head__title">{t('home.upcomingBills')}</h2>
+                      <button type="button" className="section-icon-btn" onClick={() => guardEdit(() => setSheet({ type: 'recurring' }))}>
+                        <span className="material-icons-round">event_repeat</span>
+                      </button>
+                    </div>
+                    <div className="upcoming-list">
+                      {upcomingBills.map((r) => (
+                        <div key={r.id} className="upcoming-row">
+                          <div className="upcoming-row__text">
+                            <p className="upcoming-row__title">{r.category_name}</p>
+                            <p className="upcoming-row__when">{formatDueLabel(r.next_run_at, t)}</p>
+                          </div>
+                          <p className={`upcoming-row__amt ${r.transaction_type === 'income' ? 'amount-income' : 'amount-expense'}`}>
+                            {r.transaction_type === 'income' ? '+' : '−'}{m(r.amount)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
                 <div className="section-head">
@@ -436,11 +497,58 @@ export default function MoneyApp() {
                     <span>{t('home.left', { amount: m(data.budget_remaining) })}</span><span className="opacity-60">·</span>
                     <span>{data.budget_spent_pct}%</span>
                   </div>
+                  {data.total_planned > 0 && pace.daysLeft > 0 && (
+                    <p className="mm-hero__pace">
+                      {t('home.budgetPace', { amount: m(Math.max(0, pace.perDay)) })}
+                      <span className="opacity-60"> · </span>
+                      {t('home.budgetPaceDays', { days: pace.daysLeft })}
+                    </p>
+                  )}
                 </div>
+                <SavingsGoalsCard
+                  goals={savingsGoals}
+                  m={m}
+                  onOpen={() => guardEdit(() => setSheet({ type: 'savings-goals' }))}
+                />
+                {upcomingBills.length > 0 && (
+                  <div className="upcoming-card">
+                    <div className="section-head section-head--inline">
+                      <h2 className="section-head__title">{t('home.upcomingBills')}</h2>
+                    </div>
+                    <div className="upcoming-list">
+                      {upcomingBills.map((r) => (
+                        <div key={r.id} className="upcoming-row">
+                          <div className="upcoming-row__text">
+                            <p className="upcoming-row__title">{r.category_name}</p>
+                            <p className="upcoming-row__when">{formatDueLabel(r.next_run_at, t)}</p>
+                          </div>
+                          <p className={`upcoming-row__amt ${r.transaction_type === 'income' ? 'amount-income' : 'amount-expense'}`}>
+                            {r.transaction_type === 'income' ? '+' : '−'}{m(r.amount)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="section-head">
                   <h2 className="section-head__title">{t('home.categories')}</h2>
                   <button type="button" className="section-icon-btn" onClick={() => load({ tab: 'ledger' })}><span className="material-icons-round">edit</span></button>
                 </div>
+                <button
+                  type="button"
+                  className={`copy-budget-btn ${hasBudgetRows ? 'copy-budget-btn--subtle' : ''}`}
+                  onClick={() => guardEdit(() => api('/api/budget/copy-previous', 'POST', { year: data.month_year, month: data.month_num }))}
+                >
+                  <span className="material-icons-round">content_copy</span>
+                  {hasBudgetRows ? (
+                    <span>{t('home.copyBudget')}</span>
+                  ) : (
+                    <span>
+                      <strong>{t('home.copyBudget')}</strong>
+                      <small>{t('home.copyBudgetDesc')}</small>
+                    </span>
+                  )}
+                </button>
                 <BudgetList expenses={data.budget_expense_rows} incomes={data.budget_income_rows} m={m} onExpense={(id) => guardEdit(() => setSheet({ type: 'edit-expense', id }))} onIncome={(id) => guardEdit(() => setSheet({ type: 'edit-income', id }))} />
               </>
             )}
@@ -623,6 +731,26 @@ export default function MoneyApp() {
               <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.analysis')}</p><p className="more-feature-card__desc">{t('more.analysisDesc')}</p></div>
               <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
             </button>
+            <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => setSheet({ type: 'insights' })}>
+              <div className="more-feature-card__icon"><span className="material-icons-round">psychology</span></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.insights')}</p><p className="more-feature-card__desc">{t('more.insightsDesc')}</p></div>
+              <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
+            </button>
+            <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => guardEdit(() => setSheet({ type: 'paste-sms' }))}>
+              <div className="more-feature-card__icon"><span className="material-icons-round">sms</span></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.pasteSms')}</p><p className="more-feature-card__desc">{t('more.pasteSmsDesc')}</p></div>
+              <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
+            </button>
+            <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => guardEdit(() => setSheet({ type: 'receipt-ocr' }))}>
+              <div className="more-feature-card__icon"><span className="material-icons-round">document_scanner</span></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.receipt')}</p><p className="more-feature-card__desc">{t('more.receiptDesc')}</p></div>
+              <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
+            </button>
+            <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => setSheet({ type: 'sip' })}>
+              <div className="more-feature-card__icon"><span className="material-icons-round">calculate</span></div>
+              <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.sip')}</p><p className="more-feature-card__desc">{t('more.sipDesc')}</p></div>
+              <span className="more-feature-card__go"><span className="material-icons-round">chevron_right</span></span>
+            </button>
             <button type="button" className="more-feature-card more-feature-card--settings" onClick={() => load({ tab: 'settings' })}>
               <div className="more-feature-card__icon"><span className="material-icons-round">settings</span></div>
               <div className="more-feature-card__text"><p className="more-feature-card__title">{t('more.settings')}</p><p className="more-feature-card__desc">{t('more.settingsDesc')}</p></div>
@@ -746,6 +874,27 @@ export default function MoneyApp() {
               )}
               {sheet.type === 'analysis' && (
                 <AnalysisPanel data={data} m={m} onClose={() => setSheet(null)} />
+              )}
+              {sheet.type === 'sip' && (
+                <SipCalculator m={m} onClose={() => setSheet(null)} />
+              )}
+              {sheet.type === 'paste-sms' && (
+                <PasteSmsForm data={data} onSubmit={(b) => api('/api/transactions', 'POST', b)} onClose={() => setSheet(null)} />
+              )}
+              {sheet.type === 'receipt-ocr' && (
+                <ReceiptOcrForm data={data} onSubmit={(b) => api('/api/transactions', 'POST', b)} onClose={() => setSheet(null)} />
+              )}
+              {sheet.type === 'insights' && (
+                <InsightsChat data={data} m={m} onClose={() => setSheet(null)} />
+              )}
+              {sheet.type === 'savings-goals' && (
+                <SavingsGoalsForm
+                  goals={savingsGoals}
+                  onCreate={(b) => api('/api/savings-goals', 'POST', b)}
+                  onUpdate={(id, b) => api(`/api/savings-goals/${id}`, 'PUT', b)}
+                  onDelete={(id) => api(`/api/savings-goals/${id}`, 'DELETE')}
+                  onClose={() => setSheet(null)}
+                />
               )}
               {sheet.type === 'create-account' && (
                 <AccountForm onSubmit={(b) => api('/api/accounts', 'POST', b)} onClose={() => setSheet(null)} />
@@ -1134,16 +1283,73 @@ function DailyAddForm({ data, addType, setAddType, onSubmit, onClose }: { data: 
   const [dt, setDt] = useState(toDatetimeLocalValue(new Date()));
   const [accountId, setAccountId] = useState(data.default_account_id || data.accounts[0]?.id || 0);
   const [memo, setMemo] = useState('');
+  const [linkedExpenseId, setLinkedExpenseId] = useState<number | null>(null);
+  const [linkedIncomeId, setLinkedIncomeId] = useState<number | null>(null);
+
+  const budgetRows = addType === 'expense' ? data.budget_expense_rows : data.budget_income_rows;
+  const fixedCats = addType === 'expense' ? EXPENSE_CATEGORIES : INCOME_SOURCES;
+
+  const pickBudget = (row: BootstrapData['budget_expense_rows'][0]) => {
+    setCategory(row.title);
+    if (addType === 'expense') {
+      setLinkedExpenseId(row.pk);
+      setLinkedIncomeId(null);
+    } else {
+      setLinkedIncomeId(row.pk);
+      setLinkedExpenseId(null);
+    }
+  };
+
+  const pickFixed = (name: string) => {
+    setCategory(name);
+    setLinkedExpenseId(null);
+    setLinkedIncomeId(null);
+  };
 
   return (
-    <form className="form-sheet" onSubmit={(e) => { e.preventDefault(); onSubmit({ transaction_type: addType, category_name: category, amount, txn_datetime: dt, account: accountId, memo }); }}>
+    <form className="form-sheet" onSubmit={(e) => {
+      e.preventDefault();
+      onSubmit({
+        transaction_type: addType,
+        category_name: category,
+        amount,
+        txn_datetime: dt,
+        account: accountId,
+        memo,
+        linked_expense: linkedExpenseId || undefined,
+        linked_income: linkedIncomeId || undefined,
+      });
+    }}>
       <div className="add-type-tabs">
-        <button type="button" className={`add-type-tab ${addType === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('expense')}><span className="material-icons-round text-base">north_east</span>{t('home.expense')}</button>
-        <button type="button" className={`add-type-tab ${addType === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => setAddType('income')}><span className="material-icons-round text-base">south_west</span>{t('home.income')}</button>
+        <button type="button" className={`add-type-tab ${addType === 'expense' ? 'add-type-tab--active' : ''}`} onClick={() => { setAddType('expense'); setLinkedExpenseId(null); setLinkedIncomeId(null); }}><span className="material-icons-round text-base">north_east</span>{t('home.expense')}</button>
+        <button type="button" className={`add-type-tab ${addType === 'income' ? 'add-type-tab--active' : ''}`} onClick={() => { setAddType('income'); setLinkedExpenseId(null); setLinkedIncomeId(null); }}><span className="material-icons-round text-base">south_west</span>{t('home.income')}</button>
       </div>
+      {budgetRows.length > 0 && (
+        <div className="form-section form-section--soft">
+          <p className="form-field__label">{t('home.linkBudget')}</p>
+          <div className="category-chips">
+            {budgetRows.map((row) => {
+              const active = addType === 'expense' ? linkedExpenseId === row.pk : linkedIncomeId === row.pk;
+              return (
+                <button key={row.pk} type="button" className={`category-chip ${active ? 'category-chip--active' : ''}`} onClick={() => pickBudget(row)}>
+                  {row.title}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="form-section">
         <div className="form-field form-field--amount"><label className="form-field__label">{t('form.amount')}</label><input className="md-input" type="number" step="0.01" min="0" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-        <div className="form-field"><label className="form-field__label">{t('form.category')}</label><input className="md-input" required value={category} onChange={(e) => setCategory(e.target.value)} list="cat-suggestions" /><datalist id="cat-suggestions">{(addType === 'expense' ? data.expense_suggestions : data.income_suggestions).map((s) => <option key={s} value={s} />)}</datalist></div>
+        <div className="form-field"><label className="form-field__label">{t('form.category')}</label><input className="md-input" required value={category} onChange={(e) => { setCategory(e.target.value); setLinkedExpenseId(null); setLinkedIncomeId(null); }} list="cat-suggestions" /><datalist id="cat-suggestions">{(addType === 'expense' ? data.expense_suggestions : data.income_suggestions).map((s) => <option key={s} value={s} />)}</datalist></div>
+        <div className="category-chips">
+          <span className="category-chips__label">{t('home.pickCategory')}</span>
+          {fixedCats.slice(0, 10).map((name) => (
+            <button key={name} type="button" className={`category-chip ${category === name && !linkedExpenseId && !linkedIncomeId ? 'category-chip--active' : ''}`} onClick={() => pickFixed(name)}>
+              {name}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="form-section">
         <div className="form-field"><label className="form-field__label">{t('form.dateTime')}</label><input className="md-input" type="datetime-local" required value={dt} onChange={(e) => setDt(e.target.value)} /></div>
@@ -1164,6 +1370,7 @@ function BudgetAddForm({ data, addType, setAddType, onIncome, onExpense, onClose
   const [name, setName] = useState('');
   const [accountId, setAccountId] = useState(data.default_account_id || data.accounts[0]?.id || 0);
   const [recordToday, setRecordToday] = useState(true);
+  const fixedCats = addType === 'expense' ? EXPENSE_CATEGORIES : INCOME_SOURCES;
 
   return (
     <form className="form-sheet" onSubmit={(e) => {
@@ -1179,6 +1386,13 @@ function BudgetAddForm({ data, addType, setAddType, onIncome, onExpense, onClose
       <div className="form-section">
         <div className="form-field form-field--amount"><label className="form-field__label">{addType === 'income' ? t('form.amount') : t('form.budgetedAmount')}</label><input className="md-input" type="number" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
         <div className="form-field"><label className="form-field__label">{addType === 'income' ? t('form.source') : t('form.category')}</label><input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="category-chips">
+          {fixedCats.slice(0, 12).map((cat) => (
+            <button key={cat} type="button" className={`category-chip ${name === cat ? 'category-chip--active' : ''}`} onClick={() => setName(cat)}>
+              {cat}
+            </button>
+          ))}
+        </div>
         <AccountSelect data={data} value={accountId} onChange={setAccountId} />
       </div>
       {addType === 'income' && (
@@ -1596,6 +1810,171 @@ function TemplatesForm({
         <div className="form-actions mt-3">
           <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}><span className="material-icons-round">close</span></button>
           <button type="submit" className="btn-primary">{t('form.saveTemplate')}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function formatDueLabel(iso: string, t: (key: 'home.dueIn', vars?: Record<string, string | number>) => string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return t('home.dueIn', { when: iso });
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(d);
+  due.setHours(0, 0, 0, 0);
+  const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
+  let when: string;
+  if (diff === 0) when = 'today';
+  else if (diff === 1) when = 'tomorrow';
+  else if (diff < 0) when = `${Math.abs(diff)}d ago`;
+  else when = `in ${diff}d`;
+  return t('home.dueIn', { when });
+}
+
+function SavingsGoalsCard({
+  goals,
+  m,
+  onOpen,
+}: {
+  goals: NonNullable<BootstrapData['savings_goals']>;
+  m: (n: number) => string;
+  onOpen: () => void;
+}) {
+  const { t } = useT();
+  const primary = goals[0];
+  return (
+    <button type="button" className="goal-card" onClick={onOpen}>
+      <div className="goal-card__head">
+        <h2 className="goal-card__title">{t('home.savingsGoal')}</h2>
+        <span className="material-icons-round">savings</span>
+      </div>
+      {!goals.length ? (
+        <p className="goal-card__meta">{t('home.setGoal')}</p>
+      ) : (
+        <>
+          {goals.slice(0, 3).map((g) => (
+            <div key={g.id} className="goal-card__item">
+              <div className="goal-card__item-top">
+                <span className="goal-card__item-name">{g.name}</span>
+                <span className="goal-card__item-pct">{g.progress_pct}%</span>
+              </div>
+              <p className="goal-card__amounts goal-card__amounts--sm">
+                {m(g.current_amount)} <span>/ {m(g.target_amount)}</span>
+              </p>
+              <div className="goal-card__bar"><span style={{ width: `${g.progress_pct}%` }} /></div>
+            </div>
+          ))}
+          {goals.length > 3 && (
+            <p className="goal-card__meta">{t('home.moreGoals', { count: goals.length - 3 })}</p>
+          )}
+          {goals.length === 1 && primary && (
+            <p className="goal-card__meta">{t('home.goalProgress', { pct: primary.progress_pct })}</p>
+          )}
+        </>
+      )}
+    </button>
+  );
+}
+
+function SavingsGoalsForm({
+  goals,
+  onCreate,
+  onUpdate,
+  onDelete,
+  onClose,
+}: {
+  goals: NonNullable<BootstrapData['savings_goals']>;
+  onCreate: (b: unknown) => void;
+  onUpdate: (id: number, b: unknown) => void;
+  onDelete: (id: number) => void;
+  onClose: () => void;
+}) {
+  const { t } = useT();
+  const [editId, setEditId] = useState<number | null>(null);
+  const [name, setName] = useState('');
+  const [target, setTarget] = useState('');
+  const [current, setCurrent] = useState('');
+
+  const startCreate = () => {
+    setEditId(null);
+    setName('');
+    setTarget('');
+    setCurrent('');
+  };
+
+  const startEdit = (g: NonNullable<BootstrapData['savings_goals']>[0]) => {
+    setEditId(g.id);
+    setName(g.name);
+    setTarget(String(g.target_amount));
+    setCurrent(String(g.current_amount));
+  };
+
+  return (
+    <div className="form-sheet">
+      <div className="form-sheet__head">
+        <h3 className="form-sheet__title">{t('home.savingsGoal')}</h3>
+        <p className="text-sm text-md-on-surface-variant">{t('home.multiGoalsHint')}</p>
+      </div>
+
+      {goals.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {goals.map((g) => (
+            <div key={g.id} className="goal-manage-row">
+              <button type="button" className="goal-manage-row__main" onClick={() => startEdit(g)}>
+                <span className="goal-manage-row__name">{g.name}</span>
+                <span className="goal-manage-row__amt">{g.progress_pct}%</span>
+              </button>
+              <button
+                type="button"
+                className="form-actions__btn form-actions__icon form-actions__btn--danger"
+                onClick={() => onDelete(g.id)}
+                aria-label={t('common.delete')}
+              >
+                <span className="material-icons-round">delete</span>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form
+        className="form-section"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const body = {
+            name,
+            target_amount: Number(target) || 0,
+            current_amount: Number(current) || 0,
+          };
+          if (editId) onUpdate(editId, body);
+          else onCreate(body);
+          startCreate();
+        }}
+      >
+        <p className="form-field__label mb-2">{editId ? t('form.editGoal') : t('form.addGoal')}</p>
+        <div className="form-field">
+          <label className="form-field__label">{t('form.goalName')}</label>
+          <input className="md-input" required value={name} onChange={(e) => setName(e.target.value)} placeholder={t('form.goalNamePlaceholder')} />
+        </div>
+        <div className="form-field form-field--amount">
+          <label className="form-field__label">{t('form.goalTarget')}</label>
+          <input className="md-input" type="number" min="0" step="0.01" required value={target} onChange={(e) => setTarget(e.target.value)} />
+        </div>
+        <div className="form-field form-field--amount">
+          <label className="form-field__label">{t('form.goalSaved')}</label>
+          <input className="md-input" type="number" min="0" step="0.01" value={current} onChange={(e) => setCurrent(e.target.value)} />
+        </div>
+        <div className="form-actions mt-3">
+          <button type="button" className="form-actions__btn form-actions__icon" onClick={onClose}>
+            <span className="material-icons-round">close</span>
+          </button>
+          {editId && (
+            <button type="button" className="form-actions__btn form-actions__icon" onClick={startCreate}>
+              <span className="material-icons-round">add</span>
+            </button>
+          )}
+          <button type="submit" className="btn-primary">{editId ? t('common.save') : t('form.saveGoal')}</button>
         </div>
       </form>
     </div>

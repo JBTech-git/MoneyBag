@@ -29,6 +29,7 @@ model User {
   recurringRules RecurringRule[]
   quickTemplates QuickTemplate[]
   paymentClaims  PaymentClaim[]
+  savingsGoals   SavingsGoal[]
 
   @@map("users")
 }
@@ -210,10 +211,28 @@ model AppSettings {
   language             String   @default("en")
   appMode              String   @default("daily") @map("app_mode")
   showZeroBalanceBadge Boolean  @default(true) @map("show_zero_balance_badge")
+  savingsGoalName      String   @default("") @map("savings_goal_name")
+  savingsGoalTarget    Decimal  @default(0) @map("savings_goal_target")
+  savingsGoalCurrent   Decimal  @default(0) @map("savings_goal_current")
   updatedAt            DateTime @updatedAt @map("updated_at")
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("app_settings")
+}
+
+model SavingsGoal {
+  id            Int      @id @default(autoincrement())
+  userId        String   @map("user_id")
+  name          String   @default("")
+  targetAmount  Decimal  @map("target_amount")
+  currentAmount Decimal  @default(0) @map("current_amount")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("savings_goals")
 }
 
 // Singleton platform settings (id = 1). Super admin edits from /admin.

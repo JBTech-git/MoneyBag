@@ -41,6 +41,9 @@ export async function updateSettings(
     language?: string;
     appMode?: string;
     showZeroBalanceBadge?: boolean;
+    savingsGoalName?: string;
+    savingsGoalTarget?: number;
+    savingsGoalCurrent?: number;
   },
 ) {
   const currencyCode = data.currencyCode;
@@ -61,6 +64,9 @@ export async function updateSettings(
       language: language ?? 'en',
       appMode: data.appMode ?? 'daily',
       showZeroBalanceBadge: data.showZeroBalanceBadge ?? true,
+      savingsGoalName: data.savingsGoalName ?? '',
+      savingsGoalTarget: data.savingsGoalTarget ?? 0,
+      savingsGoalCurrent: data.savingsGoalCurrent ?? 0,
     },
     update: {
       ...(data.displayName !== undefined ? { displayName: data.displayName } : {}),
@@ -78,6 +84,15 @@ export async function updateSettings(
       ...(data.appMode !== undefined ? { appMode: data.appMode } : {}),
       ...(data.showZeroBalanceBadge !== undefined
         ? { showZeroBalanceBadge: data.showZeroBalanceBadge }
+        : {}),
+      ...(data.savingsGoalName !== undefined
+        ? { savingsGoalName: data.savingsGoalName }
+        : {}),
+      ...(data.savingsGoalTarget !== undefined
+        ? { savingsGoalTarget: data.savingsGoalTarget }
+        : {}),
+      ...(data.savingsGoalCurrent !== undefined
+        ? { savingsGoalCurrent: data.savingsGoalCurrent }
         : {}),
     },
   });

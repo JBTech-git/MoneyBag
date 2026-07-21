@@ -19,6 +19,7 @@ import { toNum } from './money';
 import { formatMoneyWith, loadSettings } from './settings';
 import { batchExpenseReceivedTotals, batchIncomeReceivedTotals } from './sync';
 import { processDueRecurring, serializeRecurring } from './recurring';
+import { ensureLegacySavingsGoalMigrated, serializeSavingsGoal } from './savingsGoals';
 
 export async function ensureDefaultAccount(userId: string) {
   const count = await prisma.account.count({ where: { userId } });
@@ -112,6 +113,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
   const settings = await loadSettings(userId);
   await ensureDefaultAccount(userId);
   await processDueRecurring(userId);
+  await ensureLegacySavingsGoalMigrated(userId);
 
   const mode = query.mode || settings.appMode || 'daily';
   const lang = settings.language || 'en';
@@ -156,6 +158,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     insightTxs,
     templates,
     recurringRules,
+    savingsGoalRows,
   ] = await Promise.all([
     prisma.account.findMany({
       where: { userId },
@@ -232,6 +235,15 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
           orderBy: { nextRunAt: 'asc' },
           take: 30,
         })
+      : Promise.resolve([]),
+    needsTools
+      ? prisma.savingsGoal
+        ? prisma.savingsGoal.findMany({
+            where: { userId },
+            orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+            take: 20,
+          })
+        : Promise.resolve([])
       : Promise.resolve([]),
   ]);
 
@@ -444,6 +456,9 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
       language: settings.language || 'en',
       appMode: settings.appMode,
       showZeroBalanceBadge: settings.showZeroBalanceBadge,
+      savingsGoalName: settings.savingsGoalName || '',
+      savingsGoalTarget: toNum(settings.savingsGoalTarget),
+      savingsGoalCurrent: toNum(settings.savingsGoalCurrent),
     },
     app_mode: mode,
     tab,
@@ -498,6 +513,7 @@ export async function getAppBootstrap(userId: string, query: AppQuery = {}) {
     insights,
     quick_templates: quickTemplates,
     recurring_rules: recurring,
+    savings_goals: savingsGoalRows.map(serializeSavingsGoal),
     ledger_entries: ledgerEntries,
     ledger_months: ledgerMonths,
     calendar_days: calendarDays,

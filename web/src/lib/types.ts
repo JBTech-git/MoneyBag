@@ -8,6 +8,9 @@ export type BootstrapData = {
     language: string;
     appMode: string;
     showZeroBalanceBadge: boolean;
+    savingsGoalName: string;
+    savingsGoalTarget: number;
+    savingsGoalCurrent: number;
   };
   app_mode: string;
   tab: string;
@@ -86,6 +89,14 @@ export type BootstrapData = {
     next_run_at: string;
     last_run_at: string | null;
     is_active: boolean;
+  }>;
+  savings_goals?: Array<{
+    id: number;
+    name: string;
+    target_amount: number;
+    current_amount: number;
+    progress_pct: number;
+    sort_order: number;
   }>;
   counts: {
     accounts: number;

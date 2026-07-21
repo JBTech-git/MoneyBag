@@ -20,6 +20,7 @@
     "nodemailer": "^9.0.3",
     "react": "^18",
     "react-dom": "^18",
+    "tesseract.js": "^5.1.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

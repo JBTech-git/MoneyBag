@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authErrorResponse, requireManageAccess, requireUser } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { toNum } from '@/lib/money';
 import { ensureLegacySavingsGoalMigrated, serializeSavingsGoal } from '@/lib/savingsGoals';
 
 export const runtime = 'nodejs';
